@@ -1,5 +1,6 @@
 ﻿'use client';
 import { useEffect, useState, type ComponentType } from 'react';
+import { WorkspaceLoading } from '@/components/access-layout';
 export default function Page() {
   const [App, setApp] = useState<ComponentType | null>(null),
     [error, setError] = useState('');
@@ -19,14 +20,5 @@ export default function Page() {
       active = false;
     };
   }, []);
-  return App ? (
-    <App />
-  ) : (
-    <main className="auth">
-      <img src="/assets/mccia-logo.png" alt="MCCIA" width="135" />
-      <h1>Compliance Mitra</h1>
-      <p>{error || 'Opening your compliance workspace…'}</p>
-      {error && <a href="/workspace">Reload workspace</a>}
-    </main>
-  );
+  return App ? <App /> : <WorkspaceLoading error={error} />;
 }

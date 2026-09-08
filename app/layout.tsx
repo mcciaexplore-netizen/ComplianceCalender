@@ -1,18 +1,19 @@
-﻿import './globals.css';
+import './globals.css';
+import './product-theme.css';
 export const metadata = {
   metadataBase: new URL('https://compliance-mitra.lucky-gem-4040.chatgpt.site'),
-  title: 'Compliance Mitra | MCCIA',
+  title: 'MCCIA Compliance Calendar',
   description:
-    'MSME Compliance & Audit Management — tasks, audits, evidence and continuous improvement.',
+    'Stay Ahead of Every Compliance Deadline. Manage statutory deadlines, tasks, documents and approvals in one workspace.',
   openGraph: {
-    title: 'Compliance Mitra',
-    description: 'MSME Compliance & Audit Management',
+    title: 'MCCIA Compliance Calendar',
+    description: 'Stay Ahead of Every Compliance Deadline.',
     images: ['/og.png'],
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Compliance Mitra',
-    description: 'MSME Compliance & Audit Management',
+    title: 'MCCIA Compliance Calendar',
+    description: 'Stay Ahead of Every Compliance Deadline.',
     images: ['/og.png'],
   },
   icons: { icon: '/assets/mccia-logo.png' },

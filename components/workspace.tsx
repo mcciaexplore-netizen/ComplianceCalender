@@ -1,5 +1,19 @@
 'use client';
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
+import WorkspaceHeader from '@/components/workspace-header';
+import {
+  Avatar,
+  ComplianceCard,
+  EmptyState,
+  FileUpload,
+  FilterPills,
+  KpiCard,
+  PageHeader,
+  professionalDisclaimer,
+  StatusBadge as Badge,
+  statusTone,
+} from '@/components/compliance-ui';
+import AccessLayout, { WorkspaceLoading } from '@/components/access-layout';
 import {
   LayoutDashboard,
   Building2,
@@ -16,17 +30,13 @@ import {
   SlidersHorizontal,
   Settings,
   HelpCircle,
-  Bell,
   Search,
-  Menu,
   Plus,
-  ArrowUpRight,
   ArrowRight,
   ChevronLeft,
   ChevronRight,
   Download,
   Upload,
-  LogOut,
   CheckCircle2,
   Clock,
   TriangleAlert,
@@ -88,40 +98,6 @@ const moduleKind: Record<string, string> = {
   Templates: 'compliance-template',
 };
 const today = () => new Date().toISOString().slice(0, 10);
-function Badge({ value }: { value: string }) {
-  return (
-    <span
-      className={
-        'badge ' +
-        (['Completed', 'Verified', 'Closed', 'Compliant', 'Active'].includes(
-          value,
-        )
-          ? 'green'
-          : ['Overdue', 'Returned', 'Non-Compliant', 'Critical'].includes(value)
-            ? 'red'
-            : [
-                  'Awaiting Approval',
-                  'Submitted',
-                  'Under Review',
-                  'In Progress',
-                  'Pending Verification',
-                ].includes(value)
-              ? 'blue'
-              : [
-                    'Due Soon',
-                    'Needs Review',
-                    'Partially Compliant',
-                    'Renewal Due',
-                  ].includes(value)
-                ? 'amber'
-                : 'grey')
-      }
-    >
-      <i />
-      {value}
-    </span>
-  );
-}
 function FieldInput({
   field,
   value,
@@ -213,6 +189,8 @@ function FieldInput({
   );
 }
 export default function Workspace() {
+  const demoRequest = useRef<Promise<Response> | null>(null);
+  const loadVersion = useRef(0);
   const [data, setData] = useState<Row | null>(null),
     [loading, setLoading] = useState(true),
     [view, setView] = useState('Dashboard'),
@@ -221,36 +199,69 @@ export default function Workspace() {
     [status, setStatus] = useState('All statuses'),
     [dept, setDept] = useState('All departments'),
     [ownerFilter, setOwnerFilter] = useState('All people'),
+    [categoryFilter, setCategoryFilter] = useState('All'),
+    [frequencyFilter, setFrequencyFilter] = useState('All frequencies'),
+    [riskFilter, setRiskFilter] = useState('All priorities'),
+    [taskTab, setTaskTab] = useState('All'),
+    [docType, setDocType] = useState('All types'),
+    [docRecord, setDocRecord] = useState('All compliance'),
+    [docYear, setDocYear] = useState('All years'),
+    [reportMonth, setReportMonth] = useState(today().slice(0, 7)),
     [from, setFrom] = useState(''),
     [to, setTo] = useState(''),
     [toast, setToast] = useState(''),
     [error, setError] = useState(''),
     [busy, setBusy] = useState(false),
-    [mobile, setMobile] = useState(false),
     [modal, setModal] = useState<Row | null>(null),
     [draft, setDraft] = useState<Row>({}),
     [selected, setSelected] = useState<string | null>(null),
     [tab, setTab] = useState('Overview'),
     [comment, setComment] = useState(''),
-    [notifications, setNotifications] = useState(false),
     [calendarDate, setCalendarDate] = useState(new Date()),
     [calendarMode, setCalendarMode] = useState('Month'),
     [reportType, setReportType] = useState('Monthly Compliance Report'),
     [templateType, setTemplateType] = useState('compliance-template');
   const load = useCallback(async () => {
+    const version = ++loadVersion.current;
+    const openDemo =
+      new URLSearchParams(window.location.search).get('demo') === '1';
     try {
-      const res = await fetch('/api/workspace');
+      let res = await fetch('/api/workspace');
+      if (res.status === 401 && openDemo) {
+        // Reuse the pending request if React repeats the mount effect.
+        demoRequest.current ??= fetch('/api/auth', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'demo' }),
+        });
+        const demoResponse = await demoRequest.current;
+        if (!demoResponse.ok) {
+          const failure = (await demoResponse.clone().json()) as {
+            error?: string;
+          };
+          throw Error(
+            failure.error || 'The demo could not open. Please try again.',
+          );
+        }
+        res = await fetch('/api/workspace');
+      }
       if (res.status === 401) {
-        setData(null);
+        if (version === loadVersion.current) setData(null);
         return;
       }
       const b = (await res.json()) as any;
       if (!res.ok) throw Error(b.error);
+      if (version !== loadVersion.current) return;
       setData(b);
+      const url = new URL(window.location.href);
+      if (url.searchParams.has('demo')) {
+        url.searchParams.delete('demo');
+        window.history.replaceState({}, '', url.pathname + url.search);
+      }
     } catch (e) {
-      setError((e as Error).message);
+      if (version === loadVersion.current) setError((e as Error).message);
     } finally {
-      setLoading(false);
+      if (version === loadVersion.current) setLoading(false);
     }
   }, []);
   useEffect(() => {
@@ -264,7 +275,7 @@ export default function Workspace() {
   useEffect(() => {
     document.title =
       (data?.records.find((r: Row) => r.id === selected)?.title || view) +
-      ' | Compliance Mitra';
+      ' | Compliance Calendar';
   }, [data, selected, view]);
   useEffect(() => {
     if (!toast) return;
@@ -304,7 +315,15 @@ export default function Workspace() {
     setStatus('All statuses');
     setDept('All departments');
     setOwnerFilter('All people');
-    setMobile(false);
+    setCategoryFilter('All');
+    setFrequencyFilter('All frequencies');
+    setRiskFilter('All priorities');
+    setTaskTab('All');
+    setFrom('');
+    setTo('');
+    setDocType('All types');
+    setDocRecord('All compliance');
+    setDocYear('All years');
     window.history.replaceState(
       {},
       '',
@@ -395,29 +414,34 @@ export default function Workspace() {
       setBusy(false);
     }
   }
-  if (loading)
-    return (
-      <main className="auth">
-        <h1>Opening your workspace…</h1>
-        <p>Loading your company’s compliance position.</p>
-      </main>
-    );
+  if (loading) return <WorkspaceLoading />;
   if (!data)
     return (
-      <main className="auth">
-        <img src="/assets/mccia-logo.png" alt="MCCIA" width="135" />
-        <h1>Your compliance workspace</h1>
+      <AccessLayout>
+        <div className="eyebrow">WELCOME TO COMPLIANCE CALENDAR</div>
+        <h2>
+          See your business.
+          <br />
+          Stay ahead of the work.
+        </h2>
         <p>
-          Sign in to your company account or explore a separate demo with sample
-          records and all seven roles.
+          Explore the complete dashboard with a sample manufacturing company, or
+          sign in to your company’s workspace.
         </p>
-        {error && <p className="error">{error}</p>}
-        <div className="actions">
-          <Button render={<a href="/login" aria-label="Sign in" />}>
-            Sign in
-          </Button>
+        <div className="access-demo-summary">
+          <Building2 size={23} />
+          <div>
+            <b>ABC Precision Components Pvt. Ltd.</b>
+            <small>Demo company · Tasks, audits, documents &amp; reports</small>
+          </div>
+        </div>
+        {error && (
+          <p className="error" role="alert">
+            {error}
+          </p>
+        )}
+        <div className="access-actions">
           <Button
-            variant="outline"
             disabled={busy}
             onClick={async () => {
               setBusy(true);
@@ -431,11 +455,30 @@ export default function Workspace() {
               }
             }}
           >
-            Explore demo
+            {busy ? 'Opening dashboard…' : 'Explore demo dashboard'}{' '}
+            <ArrowRight size={17} />
+          </Button>
+          <Button
+            variant="outline"
+            render={<a href="/login" aria-label="Sign in" />}
+          >
+            Sign in to your company
           </Button>
         </div>
-        <a href="/register">Create a company account →</a>
-      </main>
+        <div className="access-register">
+          New to Compliance Calendar?{' '}
+          <a href="/register">
+            Create a company account <ArrowRight size={14} />
+          </a>
+        </div>
+        <div className="access-demo-note">
+          <ShieldCheck size={16} />
+          <span>
+            The demo is a separate workspace. Switch between all seven roles to
+            try the complete workflow.
+          </span>
+        </div>
+      </AccessLayout>
     );
   const { user, company, users, records, files } = data as {
     user: Row;
@@ -493,6 +536,11 @@ export default function Workspace() {
           (['task', 'licence', 'action'].includes(r.kind)
             ? taskStatus(r)
             : r.status) === status) &&
+        (categoryFilter === 'All' || r.category === categoryFilter) &&
+        (frequencyFilter === 'All frequencies' ||
+          r.frequency === frequencyFilter) &&
+        (riskFilter === 'All priorities' ||
+          (r.priority || r.risk || 'Not set') === riskFilter) &&
         (dept === 'All departments' || r.department === dept) &&
         (ownerFilter === 'All people' || r.owner_id === ownerFilter) &&
         (!from || (r.due || r.expiry || r.date || '') >= from) &&
@@ -513,27 +561,261 @@ export default function Workspace() {
           (!(n === 'Settings' || n === 'Templates') || isManager)
         : true,
   );
-  const fieldList = (kind: string, d: Row, onChange: (d: Row) => void) => (
-    <div className="form-grid">
-      {(fields[kind] || []).map((f) => (
-        <FieldInput
-          key={f.key}
-          field={f}
-          value={d[f.key]}
-          users={users}
-          records={records}
-          onChange={(v) => onChange({ ...d, [f.key]: v })}
-        />
-      ))}
-    </div>
-  );
+  const fieldGroups = (kind: string): [string, string[]][] =>
+    kind === 'company'
+      ? [
+          [
+            'Business Information',
+            [
+              'name',
+              'legal_name',
+              'industry',
+              'business_type',
+              'structure',
+              'stage',
+            ],
+          ],
+          [
+            'Locations',
+            [
+              'address',
+              'state',
+              'district',
+              'additional_locations',
+              'factory_locations',
+              'branch_locations',
+            ],
+          ],
+          [
+            'Financial & Employee Information',
+            [
+              'turnover',
+              'investment',
+              'employees',
+              'male',
+              'female',
+              'contract',
+            ],
+          ],
+          [
+            'Registrations',
+            [
+              'gst',
+              'pan',
+              'tan',
+              'udyam',
+              'pf',
+              'esic',
+              'pt',
+              'iec',
+              'factory_registration',
+              'other_registrations',
+            ],
+          ],
+        ]
+      : kind === 'task'
+        ? [
+            [
+              'Compliance Overview',
+              ['title', 'requirement_id', 'category', 'description'],
+            ],
+            [
+              'Responsibility & Schedule',
+              [
+                'department',
+                'owner_id',
+                'reviewer_id',
+                'due',
+                'start',
+                'period',
+                'priority',
+                'frequency',
+              ],
+            ],
+          ]
+        : kind === 'requirement'
+          ? [
+              [
+                'Compliance Overview',
+                [
+                  'title',
+                  'category',
+                  'frequency',
+                  'authority',
+                  'description',
+                  'applicable_to',
+                ],
+              ],
+              [
+                'Responsibility & Schedule',
+                ['department', 'owner_id', 'reviewer_id', 'due', 'due_rule'],
+              ],
+              ['What Needs to Be Done', ['checklist']],
+            ]
+          : kind === 'kaizen'
+            ? [
+                [
+                  'Improvement Overview',
+                  [
+                    'title',
+                    'department',
+                    'area',
+                    'audit_date',
+                    'category',
+                    'owner_id',
+                    'reviewer_id',
+                    'due',
+                  ],
+                ],
+                [
+                  'Problem & Root Cause',
+                  ['problem', 'current', 'root_cause', 'root_category'],
+                ],
+                [
+                  'Action & Expected Result',
+                  ['improvement', 'proposed_action', 'expected_result'],
+                ],
+                ['Before & After', ['before_condition', 'after_condition']],
+                [
+                  'Benefits & Verification',
+                  [
+                    'benefit',
+                    'expected_savings',
+                    'actual_savings',
+                    'time_saved',
+                    'auditor_comments',
+                  ],
+                ],
+              ]
+            : [['', (fields[kind] || []).map((f) => f.key)]];
+  const reminderOptions = (
+    key: string,
+    value: string,
+    onChange: (value: string) => void,
+    disabled = false,
+  ) => {
+    const defaults = key === 'licence_alerts' ? '90,60,30,15,7' : '15,7,2,0';
+    const chosen = String(value || defaults)
+      .split(',')
+      .map(Number)
+      .filter(Number.isFinite);
+    const options = Array.from(
+      new Set([
+        ...(key === 'licence_alerts' ? [90, 60, 30, 15, 7, 0] : [15, 7, 2, 0]),
+        ...chosen,
+      ]),
+    ).sort((a, b) => b - a);
+    return (
+      <div className="reminder-options">
+        {options.map((day) => (
+          <label key={day} className="check">
+            <input
+              type="checkbox"
+              checked={chosen.includes(day)}
+              disabled={
+                disabled || (chosen.length === 1 && chosen.includes(day))
+              }
+              onChange={(e) =>
+                onChange(
+                  (e.target.checked
+                    ? [...chosen, day]
+                    : chosen.filter((d) => d !== day)
+                  )
+                    .sort((a, b) => b - a)
+                    .join(','),
+                )
+              }
+            />
+            {day === 0
+              ? 'On due date'
+              : day > 0
+                ? day + ' days before'
+                : Math.abs(day) + ' days overdue'}
+          </label>
+        ))}
+      </div>
+    );
+  };
+  const fieldList = (kind: string, d: Row, onChange: (d: Row) => void) =>
+    kind === 'settings' ? (
+      <>
+        <div className="form-grid">
+          {fields.settings
+            .filter((f) => !['reminders', 'licence_alerts'].includes(f.key))
+            .map((f) => (
+              <FieldInput
+                key={f.key}
+                field={f}
+                value={d[f.key]}
+                users={users}
+                records={records}
+                onChange={(v) => onChange({ ...d, [f.key]: v })}
+              />
+            ))}
+        </div>
+        <h3>Task Reminder Schedule</h3>
+        {reminderOptions('reminders', d.reminders, (v) =>
+          onChange({ ...d, reminders: v }),
+        )}
+        <h3>Licence Renewal Alerts</h3>
+        {reminderOptions('licence_alerts', d.licence_alerts, (v) =>
+          onChange({ ...d, licence_alerts: v }),
+        )}
+        <p className="note">
+          Keep at least one day selected. Turn off in-app reminders in
+          Notification Preferences to pause all reminders.
+        </p>
+        <details className="advanced-reminders">
+          <summary>Custom reminder days</summary>
+          <div className="form-grid">
+            {fields.settings
+              .filter((f) => ['reminders', 'licence_alerts'].includes(f.key))
+              .map((f) => (
+                <FieldInput
+                  key={f.key}
+                  field={f}
+                  value={d[f.key]}
+                  users={users}
+                  records={records}
+                  onChange={(v) => onChange({ ...d, [f.key]: v })}
+                />
+              ))}
+          </div>
+        </details>
+      </>
+    ) : (
+      <>
+        {fieldGroups(kind).map(([title, keys]) => (
+          <section className="form-section" key={title}>
+            {title && <h3>{title}</h3>}
+            <div className="form-grid">
+              {keys
+                .map((key) => fields[kind]?.find((f) => f.key === key))
+                .filter((f): f is Field => !!f)
+                .map((f) => (
+                  <FieldInput
+                    key={f.key}
+                    field={f}
+                    value={d[f.key]}
+                    users={users}
+                    records={records}
+                    onChange={(v) => onChange({ ...d, [f.key]: v })}
+                  />
+                ))}
+            </div>
+          </section>
+        ))}
+      </>
+    );
   const toolbar = (rows: Row[]) => (
     <div className="toolbar">
       <div className="search">
         <Search size={16} />
         <input
           aria-label="Search records"
-          placeholder="Search records…"
+          placeholder={
+            view === 'Requirements' ? 'Search compliance…' : 'Search records…'
+          }
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
@@ -546,14 +828,22 @@ export default function Workspace() {
         <option>All statuses</option>
         {Array.from(
           new Set(
-            rows.map((r) =>
-              ['task', 'licence', 'action'].includes(r.kind)
-                ? taskStatus(r)
-                : r.status,
-            ),
+            rows
+              .map((r) =>
+                ['task', 'licence', 'action'].includes(r.kind)
+                  ? taskStatus(r)
+                  : r.status,
+              )
+              .filter(Boolean),
           ),
-        ).map((s) => (
-          <option key={s}>{s}</option>
+        ).map((value) => (
+          <option key={value} value={value}>
+            {value === 'Awaiting Approval'
+              ? 'Pending Review'
+              : value === 'Returned'
+                ? 'Correction Required'
+                : value}
+          </option>
         ))}
       </select>
       <select
@@ -580,121 +870,232 @@ export default function Workspace() {
           </option>
         ))}
       </select>
-      <label className="date-filter">
-        From
-        <input
-          aria-label="From date"
-          type="date"
-          value={from}
-          onChange={(e) => setFrom(e.target.value)}
-        />
-      </label>
-      <label className="date-filter">
-        To
-        <input
-          aria-label="To date"
-          type="date"
-          value={to}
-          onChange={(e) => setTo(e.target.value)}
-        />
-      </label>
-    </div>
-  );
-  const table = (rows: Row[], type = '') => (
-    <div className="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>
-              {type === 'kaizen'
-                ? 'Improvement'
-                : type === 'audit'
-                  ? 'Audit'
-                  : 'Requirement / activity'}
-            </th>
-            <th>Department / category</th>
-            <th>Responsible person</th>
-            <th>Due date</th>
-            <th>Status</th>
-            <th>
-              {type === 'audit'
-                ? 'Score'
-                : type === 'kaizen'
-                  ? 'Savings'
-                  : 'Priority'}
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r) => (
-            <tr key={r.id}>
-              <td>
-                <button className="record-link" onClick={() => open(r)}>
-                  {r.title}
-                  <ArrowUpRight size={13} />
-                </button>
-                <small>
-                  {r.authority || r.source || r.period || r.frequency || r.type}
-                </small>
-              </td>
-              <td>{r.department || r.category || '—'}</td>
-              <td>
-                <div className="person">
-                  <span>
-                    {person(r.owner_id)
-                      .split(' ')
-                      .map((s: string) => s[0])
-                      .slice(0, 2)
-                      .join('')}
-                  </span>
-                  {person(r.owner_id)}
-                </div>
-              </td>
-              <td>{dateLabel(r.due || r.expiry)}</td>
-              <td>
-                <Badge
-                  value={
-                    ['task', 'licence', 'action'].includes(r.kind)
-                      ? taskStatus(r)
-                      : r.status
-                  }
-                />
-              </td>
-              <td>
-                {type === 'audit'
-                  ? auditScore(r) + '%'
-                  : type === 'kaizen'
-                    ? '₹' +
-                      Number(r.actual_savings || 0).toLocaleString('en-IN')
-                    : r.priority || '—'}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      {!rows.length && (
-        <div className="empty">
-          <CheckCircle2 />
-          <h3>No matching records</h3>
-          <p>Try adjusting your filters or add your first record.</p>
+      <details className="filters-extra">
+        <summary className="text-button">
+          <SlidersHorizontal size={13} /> More filters
+          {frequencyFilter !== 'All frequencies' ||
+          riskFilter !== 'All priorities' ||
+          from ||
+          to
+            ? ' · Active'
+            : ''}
+        </summary>
+        <div className="filter-options">
+          <select
+            aria-label="Filter frequency"
+            value={frequencyFilter}
+            onChange={(e) => setFrequencyFilter(e.target.value)}
+          >
+            <option>All frequencies</option>
+            {Array.from(
+              new Set(rows.map((r) => r.frequency).filter(Boolean)),
+            ).map((f) => (
+              <option key={f}>{f}</option>
+            ))}
+          </select>
+          <select
+            aria-label="Filter risk or priority"
+            value={riskFilter}
+            onChange={(e) => setRiskFilter(e.target.value)}
+          >
+            <option>All priorities</option>
+            {Array.from(
+              new Set(rows.map((r) => r.priority || r.risk || 'Not set')),
+            ).map((f) => (
+              <option key={f}>{f}</option>
+            ))}
+          </select>
+          <label className="date-filter">
+            From
+            <input
+              aria-label="From date"
+              type="date"
+              value={from}
+              onChange={(e) => setFrom(e.target.value)}
+            />
+          </label>
+          <label className="date-filter">
+            To
+            <input
+              aria-label="To date"
+              type="date"
+              value={to}
+              onChange={(e) => setTo(e.target.value)}
+            />
+          </label>
+          <button
+            className="text-button"
+            onClick={() => {
+              setSearch('');
+              setStatus('All statuses');
+              setDept('All departments');
+              setOwnerFilter('All people');
+              setCategoryFilter('All');
+              setFrequencyFilter('All frequencies');
+              setRiskFilter('All priorities');
+              setFrom('');
+              setTo('');
+            }}
+          >
+            Clear filters
+          </button>
         </div>
-      )}
+      </details>
     </div>
   );
+  const recordCard = (r: Row, evidence = false) => {
+    const requirement = records.find((x) => x.id === r.requirement_id);
+    return (
+      <ComplianceCard
+        key={r.id}
+        title={r.title}
+        authority={r.authority || requirement?.authority || r.source}
+        frequency={r.frequency}
+        category={r.category || requirement?.category}
+        due={r.due || r.expiry}
+        dueLabel={dateLabel(r.due || r.expiry)}
+        owner={person(r.owner_id)}
+        status={
+          ['task', 'licence', 'action'].includes(r.kind)
+            ? taskStatus(r)
+            : r.status
+        }
+        priority={r.priority || r.risk}
+        detail={
+          r.kind === 'audit'
+            ? 'Audit score: ' + auditScore(r) + '%'
+            : r.kind === 'kaizen'
+              ? 'Actual savings: ₹' +
+                Number(r.actual_savings || 0).toLocaleString('en-IN')
+              : requirement
+                ? 'Compliance: ' + requirement.title
+                : undefined
+        }
+        onOpen={() => open(r)}
+        onEvidence={
+          evidence &&
+          ![
+            'Completed',
+            'Closed',
+            'Verified',
+            'Awaiting Approval',
+            'Submitted',
+            'Under Review',
+            'Implemented',
+          ].includes(r.status) &&
+          (isManager ||
+            isExpert ||
+            r.owner_id === user.id ||
+            r.reviewer_id === user.id)
+            ? () => {
+                open(r);
+                setTab('Documents');
+              }
+            : undefined
+        }
+      />
+    );
+  };
+  const table = (rows: Row[], type = '') =>
+    !rows.length ? (
+      <EmptyState />
+    ) : (
+      <>
+        <div className="table-wrap records-table">
+          <table>
+            <thead>
+              <tr>
+                <th>
+                  {type === 'kaizen'
+                    ? 'Improvement'
+                    : type === 'audit'
+                      ? 'Audit'
+                      : 'Compliance / activity'}
+                </th>
+                <th>Category / department</th>
+                <th>Due date</th>
+                <th>Responsible</th>
+                <th>
+                  {type === 'audit'
+                    ? 'Score'
+                    : type === 'kaizen'
+                      ? 'Savings'
+                      : 'Priority / risk'}
+                </th>
+                <th>Status</th>
+                <th>Last action</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.id || r.title}>
+                  <td>
+                    <button className="record-link" onClick={() => open(r)}>
+                      {r.title}
+                    </button>
+                    <small>
+                      {[
+                        r.authority || r.source,
+                        r.frequency || r.period || r.type,
+                      ]
+                        .filter(Boolean)
+                        .join(' · ')}
+                    </small>
+                  </td>
+                  <td>
+                    {r.category || '—'}
+                    <small>{r.department}</small>
+                  </td>
+                  <td>{dateLabel(r.due || r.expiry)}</td>
+                  <td>
+                    <div className="person">
+                      <Avatar name={person(r.owner_id)} />
+                      <span>{person(r.owner_id)}</span>
+                    </div>
+                  </td>
+                  <td>
+                    {type === 'audit'
+                      ? auditScore(r) + '%'
+                      : type === 'kaizen'
+                        ? '₹' +
+                          Number(r.actual_savings || 0).toLocaleString('en-IN')
+                        : r.priority || r.risk || 'Not set'}
+                  </td>
+                  <td>
+                    <Badge
+                      value={
+                        ['task', 'licence', 'action'].includes(r.kind)
+                          ? taskStatus(r)
+                          : r.status
+                      }
+                    />
+                  </td>
+                  <td>{r.updated ? dateLabel(r.updated) : '—'}</td>
+                  <td>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => open(r)}
+                      aria-label={'View ' + r.title}
+                    >
+                      View
+                      <ArrowRight size={13} />
+                    </Button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div className="mobile-records">{rows.map((r) => recordCard(r))}</div>
+      </>
+    );
   const sectionTitle = (
     title: string,
     sub: string,
     button?: React.ReactNode,
-  ) => (
-    <div className="page-heading">
-      <div>
-        <div className="eyebrow">YOUR COMPLIANCE WORKSPACE</div>
-        <h1>{title}</h1>
-        <p>{sub}</p>
-      </div>
-      {button}
-    </div>
-  );
+  ) => <PageHeader title={title} description={sub} action={button} />;
   const exportButtons = (rows: Row[], title: string) => (
     <div className="actions">
       <Button
@@ -714,6 +1115,23 @@ export default function Workspace() {
     </div>
   );
   function dashboard() {
+    const dueOrder = (a: Row, b: Row) =>
+      (a.due || '').localeCompare(b.due || '');
+    const overdueTasks = tasks
+      .filter((t) => taskStatus(t) === 'Overdue')
+      .sort(dueOrder);
+    const upcoming = tasks
+      .filter((t) => t.status !== 'Completed' && t.due >= today())
+      .sort(dueOrder);
+    const todayTasks = tasks.filter(
+      (t) => t.due === today() && t.status !== 'Completed',
+    );
+    const reviewTasks = tasks.filter(
+      (t) =>
+        t.status === 'Awaiting Approval' &&
+        (isManager || isExpert || t.reviewer_id === user.id),
+    );
+    const activity = records.filter((r) => r.kind === 'activity').slice(0, 5);
     const categoryData = categories
       .map((category) => ({
         category,
@@ -728,165 +1146,386 @@ export default function Workspace() {
     return (
       <>
         {sectionTitle(
-          `Welcome back, ${user.name.split(' ')[0]}.`,
-          'Here is your company’s compliance position.',
-          <Button onClick={() => go('Compliance Calendar')} variant="outline">
-            <CalendarDays />
-            View calendar
-          </Button>,
+          'Compliance Dashboard',
+          'Stay on top of your company’s upcoming and overdue compliance requirements.',
+          isManager ? (
+            <Button onClick={() => create('task')}>
+              <Plus size={16} />
+              Add Task
+            </Button>
+          ) : (
+            <Button variant="outline" onClick={() => go('My Tasks')}>
+              View my tasks
+              <ArrowRight size={15} />
+            </Button>
+          ),
         )}
-        <div className="company-strip">
-          <Building2 />
-          <div>
-            <b>{company.name}</b>
-            <small>
-              {company.industry || 'Complete your company profile'} ·{' '}
-              {company.state || 'Location not added'}
-            </small>
-          </div>
-          <span className="spacer" />
-          <span className="demo-label">
-            {company.demo ? 'DEMO WORKSPACE' : 'COMPANY WORKSPACE'}
+        <div className="dashboard-topline">
+          <span className="monitoring-status">
+            <i />
+            Compliance Monitoring Active
+          </span>
+          <span>
+            {new Date().toLocaleDateString('en-IN', {
+              weekday: 'long',
+              day: 'numeric',
+              month: 'long',
+              year: 'numeric',
+            })}
           </span>
         </div>
         <div className="kpis">
-          {[
-            ['Total compliances', tasks.length, ListChecks, 'blue'],
-            ['Completed', complete, CheckCircle2, 'green'],
-            ['Due soon', dueSoon, Clock, 'amber'],
-            ['Overdue', overdue, TriangleAlert, 'red'],
-            ['Awaiting approval', awaiting, ShieldCheck, 'blue'],
-          ].map(([label, count, Icon, color]: any) => (
-            <button
-              key={label}
-              className="kpi"
-              onClick={() => {
-                go(label === 'Awaiting approval' ? 'Approvals' : 'My Tasks');
-                if (label === 'Overdue') setStatus('Overdue');
-                if (label === 'Completed') setStatus('Completed');
-                if (label === 'Due soon') setStatus('Due Soon');
-              }}
-            >
-              <span>
-                {label}
-                <Icon className={color} />
-              </span>
-              <strong>{count}</strong>
-              <small>
-                {label === 'Overdue'
-                  ? 'Needs your attention'
-                  : label === 'Completed'
-                    ? 'Approved and evidenced'
-                    : 'Across your workspace'}
-              </small>
-            </button>
-          ))}
+          <KpiCard
+            label="Total Compliance"
+            value={tasks.length}
+            note="Tracked compliance tasks"
+            icon={ListChecks}
+            onClick={() => go('My Tasks')}
+          />
+          <KpiCard
+            label="Due Soon"
+            value={dueSoon}
+            note="Within the next 7 days"
+            icon={Clock}
+            tone="amber"
+            onClick={() => {
+              go('My Tasks');
+              setStatus('Due Soon');
+            }}
+          />
+          <KpiCard
+            label="Overdue"
+            value={overdue}
+            note="Requires attention"
+            icon={TriangleAlert}
+            tone="red"
+            onClick={() => {
+              go('My Tasks');
+              setTaskTab('Overdue');
+            }}
+          />
+          <KpiCard
+            label="Completed"
+            value={complete}
+            note="Approved and evidenced"
+            icon={CheckCircle2}
+            tone="green"
+            onClick={() => {
+              go('My Tasks');
+              setTaskTab('Completed');
+            }}
+          />
         </div>
+        <section className="panel health-section">
+          <div className="health-main">
+            <h2>Compliance Health</h2>
+            <strong>{health}%</strong>
+            <span
+              className={'health-state ' + (health >= 80 ? 'green' : 'amber')}
+            >
+              {!tasks.length
+                ? 'No tasks yet'
+                : health >= 80
+                  ? 'On track'
+                  : health >= 50
+                    ? 'Needs attention'
+                    : 'Action needed'}
+            </span>
+            <progress
+              value={health}
+              max={100}
+              aria-label="Internal compliance health"
+            />
+            <small>
+              Internal tracking indicator, based on tasks, deadlines, reviews
+              and open findings.
+            </small>
+          </div>
+          <div className="health-breakdown">
+            {[
+              [complete, 'Completed', 'green'],
+              [dueSoon, 'Due Soon', 'amber'],
+              [overdue, 'Overdue', 'red'],
+              [awaiting, 'Pending Review', 'blue'],
+            ].map(([count, label, tone]) => (
+              <div key={label}>
+                <strong className={String(tone)}>{count}</strong>
+                <small>{label}</small>
+              </div>
+            ))}
+          </div>
+        </section>
+        {overdueTasks.length > 0 && (
+          <section className="deadline-section">
+            <div className="panel-heading">
+              <div>
+                <h2>
+                  Requires Attention{' '}
+                  <span className="section-count">{overdueTasks.length}</span>
+                </h2>
+                <p>Overdue tasks that need a next step.</p>
+              </div>
+              <button
+                className="text-button"
+                onClick={() => {
+                  go('My Tasks');
+                  setTaskTab('Overdue');
+                }}
+              >
+                View all overdue
+                <ArrowRight size={13} />
+              </button>
+            </div>
+            <div className="compliance-list">
+              {overdueTasks.slice(0, 2).map((r) => recordCard(r, true))}
+            </div>
+          </section>
+        )}
+        <section className="deadline-section">
+          <div className="panel-heading">
+            <div>
+              <h2>
+                Upcoming Deadlines{' '}
+                <span className="section-count">{upcoming.length}</span>
+              </h2>
+              <p>Your next compliance commitments, in due-date order.</p>
+            </div>
+            <button
+              className="text-button"
+              onClick={() => go('Compliance Calendar')}
+            >
+              View calendar
+              <ArrowRight size={13} />
+            </button>
+          </div>
+          {upcoming.length ? (
+            <div className="compliance-list">
+              {upcoming.slice(0, 3).map((r) => recordCard(r, true))}
+            </div>
+          ) : (
+            <section className="panel">
+              <EmptyState
+                title="No upcoming deadlines"
+                description="Scheduled compliance tasks will appear here."
+                icon={CalendarDays}
+              />
+            </section>
+          )}
+        </section>
         <div className="dashboard-grid">
           <section className="panel">
             <div className="panel-heading">
-              <h2>Upcoming deadlines</h2>
-              <button className="text-button" onClick={() => go('My Tasks')}>
-                View all <ArrowRight size={14} />
+              <h2>
+                Today’s Tasks{' '}
+                <span className="section-count">{todayTasks.length}</span>
+              </h2>
+              <button
+                className="text-button"
+                onClick={() => {
+                  go('My Tasks');
+                  setTaskTab('Today');
+                }}
+              >
+                View tasks
+                <ArrowRight size={13} />
               </button>
             </div>
-            {table(
-              tasks
-                .filter((t) => t.status !== 'Completed')
-                .sort((a, b) => (a.due || '').localeCompare(b.due || ''))
-                .slice(0, 5),
+            {todayTasks.length ? (
+              todayTasks.slice(0, 5).map((t) => (
+                <div className="compact-task" key={t.id}>
+                  <ListChecks size={17} />
+                  <div className="spacer">
+                    <button className="record-link" onClick={() => open(t)}>
+                      {t.title}
+                    </button>
+                    <small>
+                      {person(t.owner_id)} · {t.priority || 'Priority not set'}
+                    </small>
+                  </div>
+                  <Badge value={taskStatus(t)} />
+                </div>
+              ))
+            ) : (
+              <EmptyState
+                title="No tasks due today"
+                description="Check your upcoming deadlines to plan the next few days."
+                icon={CheckCircle2}
+              />
             )}
           </section>
-          <section className="panel health">
-            <h2>Compliance health</h2>
-            <small>Internal Compliance Health Score</small>
-            <div
-              className="health-ring"
-              style={{
-                background: `conic-gradient(#24816b ${health * 3.6}deg,#e9eef3 0)`,
-              }}
-            >
-              <div>
-                <strong>
-                  {health}
-                  <sup>/100</sup>
-                </strong>
-                <span>
-                  {health >= 80
-                    ? 'On track'
-                    : health >= 50
-                      ? 'Needs attention'
-                      : 'Action needed'}
-                </span>
+          <div className="dashboard-section-stack">
+            {isReviewer && (
+              <section className="panel">
+                <div className="panel-heading">
+                  <h2>
+                    Pending Approvals{' '}
+                    <span className="section-count">{reviewTasks.length}</span>
+                  </h2>
+                  <button
+                    className="text-button"
+                    onClick={() => go('Approvals')}
+                  >
+                    View all
+                    <ArrowRight size={13} />
+                  </button>
+                </div>
+                {reviewTasks.length ? (
+                  reviewTasks.slice(0, 2).map((t) => (
+                    <div className="compact-task" key={t.id}>
+                      <Avatar name={person(t.owner_id)} />
+                      <div className="spacer">
+                        <button
+                          className="record-link"
+                          onClick={() => {
+                            open(t);
+                            setTab('Approval');
+                          }}
+                        >
+                          {t.title}
+                        </button>
+                        <small>
+                          {person(t.owner_id)} ·{' '}
+                          {files.filter((f) => f.record_id === t.id).length}{' '}
+                          attachments
+                        </small>
+                      </div>
+                      <ArrowRight size={14} />
+                    </div>
+                  ))
+                ) : (
+                  <p className="note">
+                    You’re all caught up. No submissions need your review.
+                  </p>
+                )}
+              </section>
+            )}
+            <section className="panel">
+              <h2>Quick Actions</h2>
+              <div className="quick-actions">
+                {isManager && (
+                  <button onClick={() => create('requirement')}>
+                    <Plus size={16} />
+                    Add Compliance
+                  </button>
+                )}
+                <button
+                  onClick={() => {
+                    if (user.role === 'Employee') go('My Tasks');
+                    else {
+                      setModal({ kind: 'upload' });
+                      setDraft({ category: 'Other' });
+                    }
+                  }}
+                >
+                  <Upload size={16} />
+                  Upload Document
+                </button>
+                <button onClick={() => go('Compliance Calendar')}>
+                  <CalendarDays size={16} />
+                  View Calendar
+                </button>
+                {isReviewer && (
+                  <button onClick={() => go('Approvals')}>
+                    <CheckCircle2 size={16} />
+                    Review Submissions
+                  </button>
+                )}
+                {user.role !== 'Employee' && (
+                  <button onClick={() => go('Reports')}>
+                    <Download size={16} />
+                    Download Report
+                  </button>
+                )}
               </div>
-            </div>
-            <p>
-              Based on completed work, deadlines, approvals and open audit
-              findings.
-            </p>
-            <small>Internal indicator · not a legal certification</small>
-          </section>
+            </section>
+          </div>
+        </div>
+        <div className="dashboard-bottom">
           <section className="panel">
             <div className="panel-heading">
-              <h2>Compliance by category</h2>
+              <h2>Compliance by Category</h2>
               <span className="legend">
                 ● Completed <span>● Pending</span>
               </span>
             </div>
-            <div className="chart">
-              <ResponsiveContainer width="100%" height={225}>
-                <BarChart data={categoryData}>
-                  <CartesianGrid vertical={false} stroke="#edf0f4" />
-                  <XAxis dataKey="category" fontSize={11} />
-                  <YAxis allowDecimals={false} fontSize={11} />
-                  <Tooltip />
-                  <Bar
-                    dataKey="completed"
-                    stackId="a"
-                    fill="#246f95"
-                    radius={[0, 0, 0, 0]}
-                  />
-                  <Bar
-                    dataKey="pending"
-                    stackId="a"
-                    fill="#d9e6f0"
-                    radius={[4, 4, 0, 0]}
-                  />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
+            {categoryData.length ? (
+              <div className="chart">
+                <ResponsiveContainer width="100%" height={180}>
+                  <BarChart data={categoryData}>
+                    <CartesianGrid vertical={false} stroke="#edf0f4" />
+                    <XAxis
+                      dataKey="category"
+                      fontSize={10}
+                      tickLine={false}
+                      axisLine={false}
+                    />
+                    <YAxis
+                      allowDecimals={false}
+                      fontSize={10}
+                      tickLine={false}
+                      axisLine={false}
+                      width={24}
+                    />
+                    <Tooltip />
+                    <Bar
+                      dataKey="completed"
+                      name="Completed"
+                      stackId="a"
+                      fill="#6485c7"
+                      maxBarSize={26}
+                    />
+                    <Bar
+                      dataKey="pending"
+                      name="Pending"
+                      stackId="a"
+                      fill="#e2e9f5"
+                      radius={[3, 3, 0, 0]}
+                      maxBarSize={26}
+                    />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            ) : (
+              <EmptyState
+                title="Your category overview starts here"
+                description="Add verified requirements and tasks to see the breakdown."
+              />
+            )}
           </section>
           <section className="panel">
-            <h2>Recent activity</h2>
+            <h2>Recent Activity</h2>
             <div className="timeline">
-              {records
-                .filter((r) => r.kind === 'activity')
-                .slice(0, 5)
-                .map((a) => (
-                  <div key={a.id}>
-                    <i />
-                    <div>
-                      <b>{a.title}</b>
-                      <small>
-                        {a.actor} · {dateLabel(a.date)}
-                      </small>
-                    </div>
+              {activity.map((a) => (
+                <div key={a.id}>
+                  <i />
+                  <div>
+                    <b>{a.title}</b>
+                    <small>
+                      {a.actor} · {dateLabel(a.date)}
+                    </small>
                   </div>
-                ))}
+                </div>
+              ))}
             </div>
+            {!activity.length && (
+              <p className="note">
+                Activity will appear as your team works on compliance.
+              </p>
+            )}
           </section>
         </div>
         <div className="guidance-banner">
-          <ShieldCheck />
+          <ShieldCheck size={22} />
           <div>
             <h3>Need expert guidance?</h3>
             <p>
-              Get help understanding a requirement through MCCIA’s advisory
-              ecosystem.
+              Connect a requirement or question with your company’s compliance
+              expert.
             </p>
           </div>
           <Button variant="outline" onClick={() => go('Help & Support')}>
-            Request guidance <ArrowRight />
+            Request guidance
+            <ArrowRight size={14} />
           </Button>
         </div>
       </>
@@ -915,13 +1554,34 @@ export default function Workspace() {
         : Array.from({ length: 42 }, (_, i) =>
             at(i - new Date(y, m, 1).getDay() + 1),
           );
+    const periodTasks = filteredTasks.filter((t) =>
+      calendarMode === 'Year'
+        ? t.due?.startsWith(String(y))
+        : calendarMode === 'Week'
+          ? days.some((d) => iso(d) === t.due)
+          : t.due?.startsWith(iso(new Date(y, m, 1)).slice(0, 7)),
+    );
     return (
       <>
         {sectionTitle(
-          'Compliance calendar',
-          'Plan the work. See every deadline and responsibility.',
-          exportButtons(filteredTasks, 'Compliance Calendar'),
+          'Compliance Calendar',
+          'Track all statutory deadlines, renewals and compliance activities.',
+          <div className="actions">
+            {exportButtons(periodTasks, 'Compliance Calendar')}
+            {isManager && (
+              <Button onClick={() => create('requirement')}>
+                <Plus />
+                Add Compliance
+              </Button>
+            )}
+          </div>,
         )}
+        <FilterPills
+          label="Compliance categories"
+          value={categoryFilter}
+          options={['All', ...categories]}
+          onChange={setCategoryFilter}
+        />
         {toolbar(tasks)}
         <section className="panel">
           <div className="panel-heading">
@@ -938,8 +1598,7 @@ export default function Workspace() {
                         (calendarMode === 'Month' || calendarMode === 'List'
                           ? 1
                           : 0),
-                      calendarDate.getDate() -
-                        (calendarMode === 'Week' ? 7 : 0),
+                      calendarMode === 'Week' ? calendarDate.getDate() - 7 : 1,
                       12,
                     ),
                   )
@@ -965,8 +1624,7 @@ export default function Workspace() {
                         (calendarMode === 'Month' || calendarMode === 'List'
                           ? 1
                           : 0),
-                      calendarDate.getDate() +
-                        (calendarMode === 'Week' ? 7 : 0),
+                      calendarMode === 'Week' ? calendarDate.getDate() + 7 : 1,
                       12,
                     ),
                   )
@@ -994,7 +1652,7 @@ export default function Workspace() {
             </div>
           </div>
           {calendarMode === 'List' ? (
-            table(filteredTasks)
+            table(periodTasks)
           ) : calendarMode === 'Year' ? (
             <div className="year-grid">
               {Array.from({ length: 12 }, (_, month) => (
@@ -1045,14 +1703,7 @@ export default function Workspace() {
                     .map((t) => (
                       <button
                         key={t.id}
-                        className={
-                          'event ' +
-                          (taskStatus(t) === 'Overdue'
-                            ? 'red'
-                            : t.status === 'Completed'
-                              ? 'green'
-                              : 'blue')
-                        }
+                        className={'event ' + statusTone(taskStatus(t))}
                         onClick={() => open(t)}
                       >
                         <b>{t.title}</b>
@@ -1067,10 +1718,27 @@ export default function Workspace() {
             </div>
           )}
         </section>
-        <p className="note">
-          Demo dates are illustrative. Confirm each due-date rule with a
-          qualified expert.
-        </p>
+        {(calendarMode === 'Month' || calendarMode === 'Week') && (
+          <section className="calendar-mobile-agenda">
+            <h3>Deadlines in this {calendarMode.toLowerCase()}</h3>
+            <div className="compliance-list">
+              {filteredTasks
+                .filter((t) =>
+                  calendarMode === 'Week'
+                    ? days.some((d) => iso(d) === t.due)
+                    : t.due?.startsWith(iso(new Date(y, m, 1)).slice(0, 7)),
+                )
+                .sort((a, b) => (a.due || '').localeCompare(b.due || ''))
+                .map((t) => recordCard(t))}
+            </div>
+          </section>
+        )}
+        {company.demo && (
+          <p className="note">
+            Demo dates are illustrative. Confirm each due-date rule with a
+            qualified expert.
+          </p>
+        )}
       </>
     );
   }
@@ -1083,52 +1751,63 @@ export default function Workspace() {
             <div className="spacer">
               <b>{f.name}</b>
               <small>
-                {f.category} · v{f.version} · {(f.size / 1024).toFixed(1)} KB ·{' '}
-                {dateLabel(f.created)}
+                {f.category} · v{f.version} · {(f.size / 1024).toFixed(1)} KB
+              </small>
+              <small>
+                Uploaded by {person(f.uploaded_by)} · {dateLabel(f.created)}
+                {f.record_id
+                  ? ' · ' +
+                    (records.find((r) => r.id === f.record_id)?.title ||
+                      'Linked record')
+                  : ' · Company document'}
               </small>
             </div>
-            <Button
-              variant="ghost"
-              render={
-                <a
-                  href={`/api/files?id=${f.id}&preview=1`}
-                  target="_blank"
-                  rel="noreferrer"
-                  aria-label="Preview document"
-                />
-              }
-            >
-              Preview
-            </Button>
-            <Button
-              variant="outline"
-              render={
-                <a
-                  href={`/api/files?id=${f.id}`}
-                  aria-label="Download document"
-                />
-              }
-            >
-              Download
-            </Button>
-            <Button
-              variant="ghost"
-              aria-label={`Delete ${f.name}`}
-              onClick={() => {
-                setModal({ kind: 'delete-file', file: f });
-                setError('');
-              }}
-            >
-              <X />
-            </Button>
+            <div className="document-actions">
+              <Button
+                variant="ghost"
+                render={
+                  <a
+                    href={'/api/files?id=' + f.id + '&preview=1'}
+                    target="_blank"
+                    rel="noreferrer"
+                    aria-label={'Preview ' + f.name}
+                  />
+                }
+              >
+                Preview
+              </Button>
+              <Button
+                variant="outline"
+                render={
+                  <a
+                    href={'/api/files?id=' + f.id}
+                    aria-label={'Download ' + f.name}
+                  />
+                }
+              >
+                <Download size={14} />
+                Download
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label={'Delete ' + f.name}
+                onClick={() => {
+                  setModal({ kind: 'delete-file', file: f });
+                  setError('');
+                }}
+              >
+                <X size={15} />
+              </Button>
+            </div>
           </article>
         ))}
         {!list.length && (
-          <div className="empty">
-            <FolderOpen />
-            <h3>No compliance documents uploaded</h3>
-            <p>Upload a file to keep the supporting evidence with your work.</p>
-          </div>
+          <EmptyState
+            title="No documents found"
+            description="Upload supporting evidence or adjust your search and filters."
+            icon={FolderOpen}
+          />
         )}
       </div>
     );
@@ -1139,29 +1818,28 @@ export default function Workspace() {
     after?: (id: string) => void,
   ) {
     return (
-      <label className="upload-control">
-        <Upload size={16} />
-        {busy ? 'Uploading…' : 'Upload document'}
-        <input
-          aria-label="Upload document"
-          type="file"
-          disabled={busy}
-          accept=".pdf,.png,.jpg,.jpeg,.xlsx,.docx,.csv,.txt"
-          onChange={async (e) => {
-            if (e.target.files?.[0]) {
-              const fid = await upload(e.target.files[0], recordId, category);
-              if (fid && after) after(fid);
-            }
-            e.target.value = '';
-          }}
-        />
-      </label>
+      <FileUpload
+        busy={busy}
+        title={recordId ? 'Filing Evidence' : 'Upload Document'}
+        onUpload={async (file) => {
+          const fid = await upload(file, recordId, category);
+          if (fid && after) after(fid);
+        }}
+      />
     );
   }
   function details(r: Row) {
     const linked = records.filter((x) => x.parent_id === r.id),
       documents = files.filter((f) => f.record_id === r.id),
-      editable = !['Completed', 'Closed', 'Verified', 'Awaiting Approval', 'Submitted', 'Under Review', 'Implemented'].includes(r.status);
+      editable = ![
+        'Completed',
+        'Closed',
+        'Verified',
+        'Awaiting Approval',
+        'Submitted',
+        'Under Review',
+        'Implemented',
+      ].includes(r.status);
     const tabs =
       r.kind === 'task'
         ? [
@@ -1269,7 +1947,10 @@ export default function Workspace() {
             Reviewer <b>{person(r.reviewer_id)}</b>
           </span>
           <span>
-            Due <b>{dateLabel(r.due)}</b>
+            Due <b>{dateLabel(r.due || r.expiry)}</b>
+          </span>
+          <span>
+            Priority / Risk <b>{r.priority || r.risk || 'Not set'}</b>
           </span>
           {r.kind === 'audit' && (
             <span>
@@ -1287,627 +1968,736 @@ export default function Workspace() {
               }}
               className={tab === t ? 'active' : ''}
             >
-              {t}
+              {t === 'Approval'
+                ? 'Review & Approval'
+                : t === 'Activity'
+                  ? 'Activity History'
+                  : t === 'Documents'
+                    ? 'Evidence & Documents'
+                    : t === 'Comments'
+                      ? 'Notes & Comments'
+                      : t}
             </button>
           ))}
         </div>
-        <section className="panel detail-panel">
-          {tab === 'Overview' && (
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                void save();
-              }}
-            >
-              {fieldList(r.kind, draft, setDraft)}
-              {r.kind === 'task' && (
-                <div className="form-grid submission">
-                  {[
-                    { key: 'filing_date', label: 'Filing date', type: 'date' },
-                    {
-                      key: 'payment_amount',
-                      label: 'Payment amount (INR)',
-                      type: 'number',
-                    },
-                    { key: 'acknowledgement', label: 'Acknowledgement number' },
-                    {
-                      key: 'notes',
-                      label: 'Submission notes',
-                      type: 'textarea',
-                    },
-                  ].map((f) => (
-                    <FieldInput
-                      key={f.key}
-                      field={f}
-                      value={draft[f.key]}
-                      users={users}
-                      records={records}
-                      onChange={(v) => setDraft({ ...draft, [f.key]: v })}
-                    />
-                  ))}
-                </div>
-              )}
-              {r.kind === 'requirement' && (
-                <div className="callout">
-                  <b>Potentially applicable · requires expert verification</b>
-                  <p>
-                    Only an expert-verified requirement creates active tasks.
-                    Consult your CA/CS or authorized expert.
-                  </p>
-                  <p>
-                    {r.remarks} {r.source && <span>Source: {r.source}</span>}
-                  </p>
-                  {isExpert && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => {
-                        setModal({ kind: 'verification', record: r });
-                        setDraft({
-                          decision: 'Applicable',
-                          remarks: '',
-                          source: '',
-                        });
-                      }}
-                    >
-                      Review applicability
-                    </Button>
-                  )}
-                </div>
-              )}
-              {r.kind === 'audit-template' && (
-                <div className="question-builder">
-                  <h2>Template questions</h2>
-                  {(draft.questions || []).map((q: Row, i: number) => (
-                    <div className="form-grid" key={i}>
-                      <label>
-                        Section
-                        <input
-                          value={q.section || ''}
-                          onChange={(e) =>
+        <div className="detail-layout">
+          <section className="panel detail-panel">
+            {tab === 'Overview' && (
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void save();
+                }}
+              >
+                {fieldList(r.kind, draft, setDraft)}
+                {r.kind === 'task' && (
+                  <div className="form-grid submission">
+                    <h3 className="wide">Filing Information</h3>
+                    {[
+                      {
+                        key: 'filing_date',
+                        label: 'Filing date',
+                        type: 'date',
+                      },
+                      {
+                        key: 'payment_amount',
+                        label: 'Payment amount (INR)',
+                        type: 'number',
+                      },
+                      {
+                        key: 'acknowledgement',
+                        label: 'Acknowledgement number',
+                      },
+                      {
+                        key: 'notes',
+                        label: 'Submission notes',
+                        type: 'textarea',
+                      },
+                    ].map((f) => (
+                      <FieldInput
+                        key={f.key}
+                        field={f}
+                        value={draft[f.key]}
+                        users={users}
+                        records={records}
+                        onChange={(v) => setDraft({ ...draft, [f.key]: v })}
+                      />
+                    ))}
+                  </div>
+                )}
+                {r.kind === 'requirement' && (
+                  <div className="callout">
+                    <b>Potentially applicable · requires expert verification</b>
+                    <p>
+                      Only an expert-verified requirement creates active tasks.
+                      Consult your CA/CS or authorized expert.
+                    </p>
+                    <p>
+                      {r.remarks} {r.source && <span>Source: {r.source}</span>}
+                    </p>
+                    {isExpert && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => {
+                          setModal({ kind: 'verification', record: r });
+                          setDraft({
+                            decision: 'Applicable',
+                            remarks: '',
+                            source: '',
+                          });
+                        }}
+                      >
+                        Review applicability
+                      </Button>
+                    )}
+                  </div>
+                )}
+                {r.kind === 'audit-template' && (
+                  <div className="question-builder">
+                    <h2>Template questions</h2>
+                    {(draft.questions || []).map((q: Row, i: number) => (
+                      <div className="form-grid" key={i}>
+                        <label>
+                          Section
+                          <input
+                            value={q.section || ''}
+                            onChange={(e) =>
+                              setDraft({
+                                ...draft,
+                                questions: draft.questions.map(
+                                  (x: Row, j: number) =>
+                                    j === i
+                                      ? { ...x, section: e.target.value }
+                                      : x,
+                                ),
+                              })
+                            }
+                          />
+                        </label>
+                        <label>
+                          Question
+                          <input
+                            required
+                            value={q.title}
+                            onChange={(e) =>
+                              setDraft({
+                                ...draft,
+                                questions: draft.questions.map(
+                                  (x: Row, j: number) =>
+                                    j === i
+                                      ? { ...x, title: e.target.value }
+                                      : x,
+                                ),
+                              })
+                            }
+                          />
+                        </label>
+                        <label>
+                          Input type
+                          <select
+                            value={q.type}
+                            onChange={(e) =>
+                              setDraft({
+                                ...draft,
+                                questions: draft.questions.map(
+                                  (x: Row, j: number) =>
+                                    j === i
+                                      ? { ...x, type: e.target.value }
+                                      : x,
+                                ),
+                              })
+                            }
+                          >
+                            {[
+                              'Assessment',
+                              'Text',
+                              'Number',
+                              'Date',
+                              'Dropdown',
+                              'Checkbox',
+                              'Radio',
+                              'File',
+                            ].map((t) => (
+                              <option key={t}>{t}</option>
+                            ))}
+                          </select>
+                        </label>
+                        <label>
+                          Options (comma separated)
+                          <input
+                            value={q.options || ''}
+                            onChange={(e) =>
+                              setDraft({
+                                ...draft,
+                                questions: draft.questions.map(
+                                  (x: Row, j: number) =>
+                                    j === i
+                                      ? { ...x, options: e.target.value }
+                                      : x,
+                                ),
+                              })
+                            }
+                          />
+                        </label>
+                        <label>
+                          Scoring weight
+                          <input
+                            type="number"
+                            min="1"
+                            value={q.weight || 1}
+                            onChange={(e) =>
+                              setDraft({
+                                ...draft,
+                                questions: draft.questions.map(
+                                  (x: Row, j: number) =>
+                                    j === i
+                                      ? { ...x, weight: Number(e.target.value) }
+                                      : x,
+                                ),
+                              })
+                            }
+                          />
+                        </label>
+                        <label className="check">
+                          <input
+                            type="checkbox"
+                            checked={q.required !== false}
+                            onChange={(e) =>
+                              setDraft({
+                                ...draft,
+                                questions: draft.questions.map(
+                                  (x: Row, j: number) =>
+                                    j === i
+                                      ? { ...x, required: e.target.checked }
+                                      : x,
+                                ),
+                              })
+                            }
+                          />
+                          Required
+                        </label>
+                        <Button
+                          type="button"
+                          variant="destructive"
+                          onClick={() =>
                             setDraft({
                               ...draft,
-                              questions: draft.questions.map(
-                                (x: Row, j: number) =>
-                                  j === i
-                                    ? { ...x, section: e.target.value }
-                                    : x,
-                              ),
-                            })
-                          }
-                        />
-                      </label>
-                      <label>
-                        Question
-                        <input
-                          required
-                          value={q.title}
-                          onChange={(e) =>
-                            setDraft({
-                              ...draft,
-                              questions: draft.questions.map(
-                                (x: Row, j: number) =>
-                                  j === i ? { ...x, title: e.target.value } : x,
-                              ),
-                            })
-                          }
-                        />
-                      </label>
-                      <label>
-                        Input type
-                        <select
-                          value={q.type}
-                          onChange={(e) =>
-                            setDraft({
-                              ...draft,
-                              questions: draft.questions.map(
-                                (x: Row, j: number) =>
-                                  j === i ? { ...x, type: e.target.value } : x,
+                              questions: draft.questions.filter(
+                                (_: Row, j: number) => i !== j,
                               ),
                             })
                           }
                         >
-                          {[
-                            'Assessment',
-                            'Text',
-                            'Number',
-                            'Date',
-                            'Dropdown',
-                            'Checkbox',
-                            'Radio',
-                            'File',
-                          ].map((t) => (
-                            <option key={t}>{t}</option>
-                          ))}
-                        </select>
-                      </label>
-                      <label>
-                        Options (comma separated)
-                        <input
-                          value={q.options || ''}
-                          onChange={(e) =>
-                            setDraft({
-                              ...draft,
-                              questions: draft.questions.map(
-                                (x: Row, j: number) =>
-                                  j === i
-                                    ? { ...x, options: e.target.value }
-                                    : x,
-                              ),
-                            })
-                          }
-                        />
-                      </label>
-                      <label>
-                        Scoring weight
-                        <input
-                          type="number"
-                          min="1"
-                          value={q.weight || 1}
-                          onChange={(e) =>
-                            setDraft({
-                              ...draft,
-                              questions: draft.questions.map(
-                                (x: Row, j: number) =>
-                                  j === i
-                                    ? { ...x, weight: Number(e.target.value) }
-                                    : x,
-                              ),
-                            })
-                          }
-                        />
-                      </label>
-                      <label className="check">
-                        <input
-                          type="checkbox"
-                          checked={q.required !== false}
-                          onChange={(e) =>
-                            setDraft({
-                              ...draft,
-                              questions: draft.questions.map(
-                                (x: Row, j: number) =>
-                                  j === i
-                                    ? { ...x, required: e.target.checked }
-                                    : x,
-                              ),
-                            })
-                          }
-                        />
-                        Required
-                      </label>
-                      <Button
-                        type="button"
-                        variant="destructive"
-                        onClick={() =>
-                          setDraft({
-                            ...draft,
-                            questions: draft.questions.filter(
-                              (_: Row, j: number) => i !== j,
-                            ),
-                          })
-                        }
-                      >
-                        Remove question
-                      </Button>
-                    </div>
-                  ))}
+                          Remove question
+                        </Button>
+                      </div>
+                    ))}
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() =>
+                        setDraft({
+                          ...draft,
+                          questions: [
+                            ...(draft.questions || []),
+                            {
+                              title: '',
+                              type: 'Assessment',
+                              section: 'General',
+                              required: true,
+                              weight: 1,
+                            },
+                          ],
+                        })
+                      }
+                    >
+                      <Plus /> Add question
+                    </Button>
+                  </div>
+                )}
+                {r.kind === 'compliance-template' && isManager && (
                   <Button
                     type="button"
                     variant="outline"
                     onClick={() =>
-                      setDraft({
-                        ...draft,
-                        questions: [
-                          ...(draft.questions || []),
-                          {
-                            title: '',
-                            type: 'Assessment',
-                            section: 'General',
-                            required: true,
-                            weight: 1,
-                          },
-                        ],
+                      create('requirement', {
+                        ...r,
+                        id: undefined,
+                        kind: undefined,
+                        status: undefined,
+                        template_id: r.id,
+                        due: today(),
                       })
                     }
                   >
-                    <Plus /> Add question
+                    Use template for new requirement
                   </Button>
-                </div>
-              )}
-              {r.kind === 'compliance-template' && isManager && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() =>
-                    create('requirement', {
-                      ...r,
-                      id: undefined,
-                      kind: undefined,
-                      status: undefined,
-                      template_id: r.id,
-                      due: today(),
-                    })
-                  }
-                >
-                  Use template for new requirement
-                </Button>
-              )}
-              {editable && (
-                <Button type="submit" disabled={busy}>
-                  Save progress
-                </Button>
-              )}
-            </form>
-          )}
-          {tab === 'Checklist' && r.kind === 'task' && (
-            <>
-              <h2>Required steps</h2>
-              <p>
-                {(draft.checklist || []).filter((q: Row) => q.done).length} /{' '}
-                {(draft.checklist || []).length} completed
-              </p>
-              {(draft.checklist || []).map((q: Row, i: number) => (
-                <label className="checklist-item" key={i}>
-                  <input
-                    type="checkbox"
-                    disabled={!editable}
-                    checked={q.done}
-                    onChange={(e) =>
-                      setDraft({
-                        ...draft,
-                        checklist: draft.checklist.map((x: Row, j: number) =>
-                          i === j ? { ...x, done: e.target.checked } : x,
-                        ),
-                      })
-                    }
-                  />
-                  <span>{q.text}</span>
-                </label>
-              ))}
-              {isManager && editable && (
-                <Button
-                  variant="outline"
-                  onClick={() =>
-                    setDraft({
-                      ...draft,
-                      checklist: [
-                        ...(draft.checklist || []),
-                        { text: 'New required step', done: false },
-                      ],
-                    })
-                  }
-                >
-                  Add step
-                </Button>
-              )}
-              {isManager &&
-                (draft.checklist || []).map((q: Row, i: number) => (
-                  <label key={i} className="step-edit">
-                    Step {i + 1}
+                )}
+                {editable && (
+                  <Button type="submit" disabled={busy}>
+                    Save progress
+                  </Button>
+                )}
+              </form>
+            )}
+            {tab === 'Checklist' && r.kind === 'task' && (
+              <>
+                <h2>Required steps</h2>
+                <p>
+                  {(draft.checklist || []).filter((q: Row) => q.done).length} /{' '}
+                  {(draft.checklist || []).length} completed
+                </p>
+                {(draft.checklist || []).map((q: Row, i: number) => (
+                  <label className="checklist-item" key={i}>
                     <input
-                      value={q.text}
+                      type="checkbox"
+                      disabled={!editable}
+                      checked={q.done}
                       onChange={(e) =>
                         setDraft({
                           ...draft,
                           checklist: draft.checklist.map((x: Row, j: number) =>
-                            i === j ? { ...x, text: e.target.value } : x,
+                            i === j ? { ...x, done: e.target.checked } : x,
                           ),
                         })
                       }
                     />
+                    <span>{q.text}</span>
                   </label>
                 ))}
-              {editable && (
-                <Button disabled={busy} onClick={save}>
-                  Save checklist
-                </Button>
-              )}
-            </>
-          )}
-          {tab === 'Checklist' && r.kind === 'audit' && (
-            <>
-              <h2>Audit assessment</h2>
-              <p>
-                Save your draft, then submit the completed audit for review.
-              </p>
-              {(draft.questions || []).map((q: Row, i: number) => {
-                const change = (key: string, value: any) =>
-                  setDraft({
-                    ...draft,
-                    questions: draft.questions.map((x: Row, j: number) =>
-                      j === i ? { ...x, [key]: value } : x,
-                    ),
-                  });
-                return (
-                  <article className="audit-question" key={i}>
-                    <small>
-                      {q.section || 'COMPLIANCE REQUIREMENT'} ·{' '}
-                      {String(i + 1).padStart(2, '0')}
-                    </small>
-                    <h3>
-                      {q.title}
-                      {q.required !== false ? ' *' : ''}
-                    </h3>
-                    {!q.type || q.type === 'Assessment' ? (
-                      <div className="assessment">
-                        {[
-                          'Compliant',
-                          'Partially Compliant',
-                          'Non-Compliant',
-                          'Not Applicable',
-                        ].map((a) => (
-                          <label key={a}>
-                            <input
-                              type="radio"
-                              name={`assessment-${i}`}
-                              checked={q.assessment === a}
-                              onChange={() => change('assessment', a)}
-                            />
-                            {a}
-                          </label>
-                        ))}
-                      </div>
-                    ) : q.type === 'File' ? (
-                      uploadControl(r.id, 'Audit', (fid) =>
-                        change('answer', fid),
-                      )
-                    ) : q.type === 'Checkbox' ? (
-                      <label className="check">
-                        <input
-                          type="checkbox"
-                          checked={q.answer === true}
-                          onChange={(e) => change('answer', e.target.checked)}
-                        />
-                        Confirmed
-                      </label>
-                    ) : ['Dropdown', 'Radio'].includes(q.type) ? (
-                      <select
-                        aria-label={q.title}
-                        value={q.answer || ''}
-                        onChange={(e) => change('answer', e.target.value)}
-                      >
-                        <option value="">Select…</option>
-                        {String(q.options || 'Yes,No')
-                          .split(',')
-                          .map((o) => (
-                            <option key={o}>{o.trim()}</option>
-                          ))}
-                      </select>
-                    ) : (
-                      <input
-                        aria-label={q.title}
-                        type={q.type?.toLowerCase() || 'text'}
-                        value={q.answer || ''}
-                        onChange={(e) => change('answer', e.target.value)}
-                      />
-                    )}
-                    <div className="form-grid">
-                      {[
-                        { key: 'law', label: 'Applicable law / rule' },
-                        { key: 'document_number', label: 'Document number' },
-                        {
-                          key: 'validity',
-                          label: 'Evidence validity',
-                          type: 'date',
-                        },
-                        {
-                          key: 'observation',
-                          label: 'Observation',
-                          type: 'textarea',
-                        },
-                        {
-                          key: 'risk',
-                          label: 'Risk',
-                          type: 'select',
-                          options: ['Low', 'Medium', 'High', 'Critical'],
-                        },
-                        { key: 'action', label: 'Corrective action' },
-                        {
-                          key: 'owner_id',
-                          label: 'Action owner',
-                          type: 'user',
-                        },
-                        { key: 'due', label: 'Target date', type: 'date' },
-                      ].map((f) => (
-                        <FieldInput
-                          key={f.key}
-                          field={f}
-                          value={q[f.key]}
-                          users={users}
-                          records={records}
-                          onChange={(v) => change(f.key, v)}
-                        />
-                      ))}
-                    </div>
-                    {uploadControl(r.id, 'Audit')}
-                  </article>
-                );
-              })}
-              <Button disabled={busy} onClick={save}>
-                Save audit draft
-              </Button>
-            </>
-          )}
-          {tab === 'Documents' && (
-            <>
-              <div className="panel-heading">
-                <h2>Supporting evidence</h2>
-                {editable && uploadControl(r.id, r.category || 'Audit')}
-              </div>
-              {documentList(documents)}
-            </>
-          )}
-          {tab === 'Before / After' && (
-            <>
-              <div className="before-after">
-                {['before', 'after'].map((side) => (
-                  <article key={side}>
-                    <div className="eyebrow">{side.toUpperCase()}</div>
-                    {r[side + '_image'] ? (
-                      <img
-                        src={`/api/files?id=${r[side + '_image']}&preview=1`}
-                        alt={`${side} improvement condition`}
-                      />
-                    ) : (
-                      <div className="image-empty">Upload a {side} image</div>
-                    )}
-                    <p>
-                      {r[side + '_condition'] ||
-                        'Describe this condition in the overview.'}
-                    </p>
-                    {editable && (
-                      <label className="upload-control">
-                        <Upload size={16} />
-                        Upload {side} image
-                        <input
-                          type="file"
-                          accept="image/png,image/jpeg"
-                          aria-label={`Upload ${side} image`}
-                          onChange={async (e) => {
-                            if (e.target.files?.[0]) {
-                              const fid = await upload(
-                                e.target.files[0],
-                                r.id,
-                                'Audit',
-                              );
-                              if (fid)
-                                await act({
-                                  action: 'save',
-                                  id: r.id,
-                                  data: { [side + '_image']: fid },
-                                });
-                            }
-                          }}
-                        />
-                      </label>
-                    )}
-                  </article>
-                ))}
-              </div>
-            </>
-          )}
-          {tab === 'Benefits' && (
-            <div className="kpis">
-              {[
-                ['Potential savings', r.expected_savings || 0],
-                ['Actual savings', r.actual_savings || 0],
-                ['Hours saved / month', r.time_saved || 0],
-              ].map(([label, value]) => (
-                <div key={label} className="kpi">
-                  <span>{label}</span>
-                  <strong>{Number(value).toLocaleString('en-IN')}</strong>
-                </div>
-              ))}
-            </div>
-          )}
-          {['Findings', 'Corrective Actions', 'Actions'].includes(tab) && (
-            <>
-              <div className="panel-heading">
-                <h2>Linked corrective actions</h2>
-                {(isManager || isExpert) && (
+                {isManager && editable && (
                   <Button
+                    variant="outline"
                     onClick={() =>
-                      create('action', {
-                        parent_id: r.id,
-                        source:
-                          r.kind === 'audit'
-                            ? 'Compliance Audit'
-                            : 'Kaizen Audit',
-                        owner_id: r.owner_id,
-                        reviewer_id: r.reviewer_id,
+                      setDraft({
+                        ...draft,
+                        checklist: [
+                          ...(draft.checklist || []),
+                          { text: 'New required step', done: false },
+                        ],
                       })
                     }
                   >
-                    <Plus />
-                    Add action
+                    Add step
                   </Button>
                 )}
-              </div>
-              {table(linked.filter((x) => x.kind === 'action'))}
-            </>
-          )}
-          {tab === 'Comments' && (
-            <>
-              <h2>Discussion</h2>
-              {linked
-                .filter((x) => x.kind === 'comment')
-                .map((c) => (
-                  <article className="comment" key={c.id}>
-                    <b>{c.actor}</b>
-                    <small>{dateLabel(c.date)}</small>
-                    <p>{c.title}</p>
-                  </article>
-                ))}
-              <label>
-                Add a comment
-                <textarea
-                  value={comment}
-                  onChange={(e) => setComment(e.target.value)}
-                />
-              </label>
-              <Button
-                disabled={busy || !comment.trim()}
-                onClick={async () => {
-                  if (
-                    await act(
-                      { action: 'comment', id: r.id, text: comment },
-                      'Comment added',
-                    )
-                  )
-                    setComment('');
-                }}
-              >
-                Post comment
-              </Button>
-            </>
-          )}
-          {['Approval', 'Verification'].includes(tab) && (
-            <>
-              <h2>Review & verification</h2>
-              {documentList(documents)}
-              <p>
-                {r.verification_remarks ||
-                  'Review the work and supporting evidence before approving.'}
-              </p>
-              {r.verified_by && (
+                {isManager &&
+                  (draft.checklist || []).map((q: Row, i: number) => (
+                    <label key={i} className="step-edit">
+                      Step {i + 1}
+                      <input
+                        value={q.text}
+                        onChange={(e) =>
+                          setDraft({
+                            ...draft,
+                            checklist: draft.checklist.map(
+                              (x: Row, j: number) =>
+                                i === j ? { ...x, text: e.target.value } : x,
+                            ),
+                          })
+                        }
+                      />
+                    </label>
+                  ))}
+                {editable && (
+                  <Button disabled={busy} onClick={save}>
+                    Save checklist
+                  </Button>
+                )}
+              </>
+            )}
+            {tab === 'Checklist' && r.kind === 'audit' && (
+              <>
+                <h2>Audit assessment</h2>
                 <p>
-                  Verified by <b>{r.verified_by}</b> on{' '}
-                  {dateLabel(r.verification_date)}
+                  Save your draft, then submit the completed audit for review.
                 </p>
-              )}
-              {(r.history || []).map((h: Row, i: number) => (
-                <div className="comment" key={i}>
-                  <b>{h.text}</b>
-                  <small>
-                    {h.actor} · {dateLabel(h.date)}
-                  </small>
-                  <p>{h.comment}</p>
-                </div>
-              ))}
-            </>
-          )}
-          {tab === 'Activity' && (
-            <div className="timeline">
-              {linked
-                .filter((x) => x.kind === 'activity')
-                .map((a) => (
-                  <div key={a.id}>
-                    <i />
-                    <div>
-                      <b>{a.title}</b>
+                {(draft.questions || []).map((q: Row, i: number) => {
+                  const change = (key: string, value: any) =>
+                    setDraft({
+                      ...draft,
+                      questions: draft.questions.map((x: Row, j: number) =>
+                        j === i ? { ...x, [key]: value } : x,
+                      ),
+                    });
+                  return (
+                    <article className="audit-question" key={i}>
                       <small>
-                        {a.actor} · {dateLabel(a.date)}
+                        {q.section || 'COMPLIANCE REQUIREMENT'} ·{' '}
+                        {String(i + 1).padStart(2, '0')}
                       </small>
-                    </div>
+                      <h3>
+                        {q.title}
+                        {q.required !== false ? ' *' : ''}
+                      </h3>
+                      {!q.type || q.type === 'Assessment' ? (
+                        <div className="assessment">
+                          {[
+                            'Compliant',
+                            'Partially Compliant',
+                            'Non-Compliant',
+                            'Not Applicable',
+                          ].map((a) => (
+                            <label key={a}>
+                              <input
+                                type="radio"
+                                name={`assessment-${i}`}
+                                checked={q.assessment === a}
+                                onChange={() => change('assessment', a)}
+                              />
+                              {a}
+                            </label>
+                          ))}
+                        </div>
+                      ) : q.type === 'File' ? (
+                        uploadControl(r.id, 'Audit', (fid) =>
+                          change('answer', fid),
+                        )
+                      ) : q.type === 'Checkbox' ? (
+                        <label className="check">
+                          <input
+                            type="checkbox"
+                            checked={q.answer === true}
+                            onChange={(e) => change('answer', e.target.checked)}
+                          />
+                          Confirmed
+                        </label>
+                      ) : ['Dropdown', 'Radio'].includes(q.type) ? (
+                        <select
+                          aria-label={q.title}
+                          value={q.answer || ''}
+                          onChange={(e) => change('answer', e.target.value)}
+                        >
+                          <option value="">Select…</option>
+                          {String(q.options || 'Yes,No')
+                            .split(',')
+                            .map((o) => (
+                              <option key={o}>{o.trim()}</option>
+                            ))}
+                        </select>
+                      ) : (
+                        <input
+                          aria-label={q.title}
+                          type={q.type?.toLowerCase() || 'text'}
+                          value={q.answer || ''}
+                          onChange={(e) => change('answer', e.target.value)}
+                        />
+                      )}
+                      <div className="form-grid">
+                        {[
+                          { key: 'law', label: 'Applicable law / rule' },
+                          { key: 'document_number', label: 'Document number' },
+                          {
+                            key: 'validity',
+                            label: 'Evidence validity',
+                            type: 'date',
+                          },
+                          {
+                            key: 'observation',
+                            label: 'Observation',
+                            type: 'textarea',
+                          },
+                          {
+                            key: 'risk',
+                            label: 'Risk',
+                            type: 'select',
+                            options: ['Low', 'Medium', 'High', 'Critical'],
+                          },
+                          { key: 'action', label: 'Corrective action' },
+                          {
+                            key: 'owner_id',
+                            label: 'Action owner',
+                            type: 'user',
+                          },
+                          { key: 'due', label: 'Target date', type: 'date' },
+                        ].map((f) => (
+                          <FieldInput
+                            key={f.key}
+                            field={f}
+                            value={q[f.key]}
+                            users={users}
+                            records={records}
+                            onChange={(v) => change(f.key, v)}
+                          />
+                        ))}
+                      </div>
+                      {uploadControl(r.id, 'Audit')}
+                    </article>
+                  );
+                })}
+                <Button disabled={busy} onClick={save}>
+                  Save audit draft
+                </Button>
+              </>
+            )}
+            {tab === 'Documents' && (
+              <>
+                <div className="panel-heading">
+                  <h2>Supporting evidence</h2>
+                  {editable && uploadControl(r.id, r.category || 'Audit')}
+                </div>
+                {documentList(documents)}
+              </>
+            )}
+            {tab === 'Before / After' && (
+              <>
+                <div className="before-after">
+                  {['before', 'after'].map((side) => (
+                    <article key={side}>
+                      <div className="eyebrow">{side.toUpperCase()}</div>
+                      {r[side + '_image'] ? (
+                        <img
+                          src={`/api/files?id=${r[side + '_image']}&preview=1`}
+                          alt={`${side} improvement condition`}
+                        />
+                      ) : (
+                        <div className="image-empty">Upload a {side} image</div>
+                      )}
+                      <p>
+                        {r[side + '_condition'] ||
+                          'Describe this condition in the overview.'}
+                      </p>
+                      {editable && (
+                        <label className="upload-control">
+                          <Upload size={16} />
+                          Upload {side} image
+                          <input
+                            type="file"
+                            accept="image/png,image/jpeg"
+                            aria-label={`Upload ${side} image`}
+                            onChange={async (e) => {
+                              if (e.target.files?.[0]) {
+                                const fid = await upload(
+                                  e.target.files[0],
+                                  r.id,
+                                  'Audit',
+                                );
+                                if (fid)
+                                  await act({
+                                    action: 'save',
+                                    id: r.id,
+                                    data: { [side + '_image']: fid },
+                                  });
+                              }
+                            }}
+                          />
+                        </label>
+                      )}
+                    </article>
+                  ))}
+                </div>
+              </>
+            )}
+            {tab === 'Benefits' && (
+              <div className="kpis">
+                {[
+                  ['Potential savings', r.expected_savings || 0],
+                  ['Actual savings', r.actual_savings || 0],
+                  ['Hours saved / month', r.time_saved || 0],
+                ].map(([label, value]) => (
+                  <div key={label} className="kpi">
+                    <span>{label}</span>
+                    <strong>{Number(value).toLocaleString('en-IN')}</strong>
                   </div>
                 ))}
-            </div>
-          )}
-        </section>
+              </div>
+            )}
+            {['Findings', 'Corrective Actions', 'Actions'].includes(tab) && (
+              <>
+                <div className="panel-heading">
+                  <h2>Linked corrective actions</h2>
+                  {(isManager || isExpert) && (
+                    <Button
+                      onClick={() =>
+                        create('action', {
+                          parent_id: r.id,
+                          source:
+                            r.kind === 'audit'
+                              ? 'Compliance Audit'
+                              : 'Kaizen Audit',
+                          owner_id: r.owner_id,
+                          reviewer_id: r.reviewer_id,
+                        })
+                      }
+                    >
+                      <Plus />
+                      Add action
+                    </Button>
+                  )}
+                </div>
+                {table(linked.filter((x) => x.kind === 'action'))}
+              </>
+            )}
+            {tab === 'Comments' && (
+              <>
+                <h2>Discussion</h2>
+                {linked
+                  .filter((x) => x.kind === 'comment')
+                  .map((c) => (
+                    <article className="comment" key={c.id}>
+                      <b>{c.actor}</b>
+                      <small>{dateLabel(c.date)}</small>
+                      <p>{c.title}</p>
+                    </article>
+                  ))}
+                <label>
+                  Add a comment
+                  <textarea
+                    value={comment}
+                    onChange={(e) => setComment(e.target.value)}
+                  />
+                </label>
+                <Button
+                  disabled={busy || !comment.trim()}
+                  onClick={async () => {
+                    if (
+                      await act(
+                        { action: 'comment', id: r.id, text: comment },
+                        'Comment added',
+                      )
+                    )
+                      setComment('');
+                  }}
+                >
+                  Post comment
+                </Button>
+              </>
+            )}
+            {['Approval', 'Verification'].includes(tab) && (
+              <>
+                <h2>Review & Approval</h2>
+                <p>
+                  Reviewer: <b>{person(r.reviewer_id)}</b>
+                </p>
+                <Badge value={r.status} />
+                {documentList(documents)}
+                <p>
+                  {r.verification_remarks ||
+                    'Review the work and supporting evidence before approving.'}
+                </p>
+                {r.verified_by && (
+                  <p>
+                    Verified by <b>{r.verified_by}</b> on{' '}
+                    {dateLabel(r.verification_date)}
+                  </p>
+                )}
+                {(r.history || []).map((h: Row, i: number) => (
+                  <div className="comment" key={i}>
+                    <b>{h.text}</b>
+                    <small>
+                      {h.actor} · {dateLabel(h.date)}
+                    </small>
+                    <p>{h.comment}</p>
+                  </div>
+                ))}
+              </>
+            )}
+            {tab === 'Activity' && (
+              <div className="timeline">
+                {linked
+                  .filter((x) => x.kind === 'activity')
+                  .map((a) => (
+                    <div key={a.id}>
+                      <i />
+                      <div>
+                        <b>{a.title}</b>
+                        <small>
+                          {a.actor} · {dateLabel(a.date)}
+                        </small>
+                      </div>
+                    </div>
+                  ))}
+              </div>
+            )}
+          </section>
+          <aside className="panel detail-context">
+            <h3>Compliance at a glance</h3>
+            <dl>
+              {[
+                [
+                  'Authority',
+                  r.authority ||
+                    records.find((x) => x.id === r.requirement_id)?.authority ||
+                    'Not specified',
+                ],
+                ['Frequency', r.frequency || 'Not specified'],
+                [
+                  'Applicable to',
+                  r.applicable_to || 'See verified requirement',
+                ],
+                ['Responsible', person(r.owner_id)],
+                ['Reviewer', person(r.reviewer_id)],
+                ['Evidence', documents.length + ' documents'],
+              ].map(([label, value]) => (
+                <div key={label}>
+                  <dt>{label}</dt>
+                  <dd>{value}</dd>
+                </div>
+              ))}
+            </dl>
+            {r.description && (
+              <div className="callout">
+                <h3>What needs to be done</h3>
+                <p>{r.description}</p>
+              </div>
+            )}
+            {r.requirement_id && (
+              <button
+                className="context-link text-button"
+                onClick={() => {
+                  const requirement = records.find(
+                    (x) => x.id === r.requirement_id,
+                  );
+                  if (requirement) open(requirement);
+                }}
+              >
+                Open compliance requirement
+                <ArrowRight size={13} />
+              </button>
+            )}
+            {r.source && /^https?:\/\//.test(r.source) && (
+              <a
+                className="context-link"
+                href={r.source}
+                target="_blank"
+                rel="noreferrer"
+              >
+                Official portal / source ↗
+              </a>
+            )}
+            {r.kind === 'requirement' && (
+              <>
+                <h3 className="context-heading">Linked submissions</h3>
+                {tasks
+                  .filter((t) => t.requirement_id === r.id)
+                  .map((t) => (
+                    <div className="compact-task" key={t.id}>
+                      <div>
+                        <button className="record-link" onClick={() => open(t)}>
+                          {t.title}
+                        </button>
+                        <small>
+                          {dateLabel(t.due)} · {taskStatus(t)}
+                        </small>
+                      </div>
+                    </div>
+                  ))}
+                {!tasks.some((t) => t.requirement_id === r.id) && (
+                  <p className="note">No scheduled tasks yet.</p>
+                )}
+              </>
+            )}
+          </aside>
+        </div>
         {transitions[r.kind]?.[r.status] && (
-          <section className="workflow-bar">
+          <section className="workflow-bar workflow">
             <div>
-              <b>Move this work forward</b>
+              <b>
+                {r.status === 'Awaiting Approval'
+                  ? 'Review & Approval'
+                  : 'Next Action'}
+              </b>
               <small>Save edits before changing status.</small>
             </div>
             <label className="spacer">
@@ -1936,6 +2726,12 @@ export default function Workspace() {
                   variant={next === 'Returned' ? 'outline' : 'default'}
                   disabled={busy}
                   onClick={async () => {
+                    if (next === 'Returned' && !comment.trim()) {
+                      setError(
+                        'Add a correction reason before returning this submission.',
+                      );
+                      return;
+                    }
                     if (
                       await act(
                         {
@@ -1986,8 +2782,8 @@ export default function Workspace() {
     return (
       <>
         {sectionTitle(
-          'My company',
-          'Enter your profile once. Keep every compliance connected.',
+          'Company Profile',
+          'Your business information, registrations and compliance configuration.',
           <Button
             onClick={() => {
               setModal({ kind: 'company' });
@@ -2013,16 +2809,22 @@ export default function Workspace() {
                 <p>{company.industry}</p>
               </div>
             </div>
-            <div className="form-grid">
-              {fields.company
-                .filter((f) => company[f.key])
-                .map((f) => (
-                  <div key={f.key}>
-                    <small>{f.label}</small>
-                    <b>{company[f.key]}</b>
-                  </div>
-                ))}
-            </div>
+            {fieldGroups('company').map(([title, keys]) => (
+              <section className="profile-section" key={title}>
+                <h3>{title}</h3>
+                <div className="form-grid">
+                  {keys
+                    .map((key) => fields.company.find((f) => f.key === key))
+                    .filter((f): f is Field => !!f)
+                    .map((f) => (
+                      <div key={f.key}>
+                        <small>{f.label}</small>
+                        <b>{company[f.key] ?? 'Not added'}</b>
+                      </div>
+                    ))}
+                </div>
+              </section>
+            ))}
             <div className="callout">
               <h3>Company branding</h3>
               <p>
@@ -2078,6 +2880,39 @@ export default function Workspace() {
               ))}
             </section>
             <section className="panel">
+              <h3>Compliance Configuration</h3>
+              <div className="profile-config">
+                <div>
+                  <b>
+                    {
+                      new Set(users.map((u) => u.department).filter(Boolean))
+                        .size
+                    }
+                  </b>
+                  <small>Departments</small>
+                </div>
+                <div>
+                  <b>{users.filter((u) => u.status === 'Active').length}</b>
+                  <small>Active people</small>
+                </div>
+                <div>
+                  <b>
+                    {
+                      new Set(tasks.map((t) => t.reviewer_id).filter(Boolean))
+                        .size
+                    }
+                  </b>
+                  <small>Task reviewers</small>
+                </div>
+              </div>
+              {allowedNav.some(([name]) => name === 'Users & Roles') && (
+                <Button variant="outline" onClick={() => go('Users & Roles')}>
+                  Manage team
+                  <ArrowRight size={14} />
+                </Button>
+              )}
+            </section>
+            <section className="panel">
               <h3>Potential compliance requirements</h3>
               <p>
                 Manufacturing: factory, environment and safety.
@@ -2098,15 +2933,88 @@ export default function Workspace() {
     const reportNames = [
       'Compliance Status Report',
       'Monthly Compliance Report',
+      'Upcoming Deadlines Report',
       'Overdue Compliance Report',
       'Audit Report',
       'Kaizen Report',
       'Corrective Action Report',
       'Licence Expiry Report',
       'Department Performance Report',
+      'Responsible Person Performance Report',
       'Document Missing Report',
     ];
-    let rows =
+    const scopedTasks = filtered(tasks);
+    const inMonth = scopedTasks.filter((t) => t.due?.startsWith(reportMonth));
+    const monthTitle = new Date(
+      reportMonth + '-01T12:00:00',
+    ).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+    const nextDate = new Date(reportMonth + '-01T12:00:00');
+    nextDate.setMonth(nextDate.getMonth() + 1);
+    const nextMonth =
+      nextDate.getFullYear() +
+      '-' +
+      String(nextDate.getMonth() + 1).padStart(2, '0');
+    const monthCompleted = inMonth.filter(
+      (t) => t.status === 'Completed',
+    ).length;
+    const monthOverdue = inMonth.filter(
+      (t) => taskStatus(t) === 'Overdue',
+    ).length;
+    const monthDueSoon = inMonth.filter(
+      (t) => taskStatus(t) === 'Due Soon',
+    ).length;
+    const monthReview = inMonth.filter(
+      (t) => t.status === 'Awaiting Approval',
+    ).length;
+    const performance = (key: string) =>
+      Array.from(new Set(scopedTasks.map((t) => t[key] || 'Unassigned'))).map(
+        (value) => {
+          const assigned = scopedTasks.filter(
+            (t) => (t[key] || 'Unassigned') === value,
+          );
+          return {
+            title: key === 'owner_id' ? person(value) : value,
+            total: assigned.length,
+            completed: assigned.filter((t) => t.status === 'Completed').length,
+            overdue: assigned.filter((t) => taskStatus(t) === 'Overdue').length,
+          };
+        },
+      );
+    const departmentData = performance('department'),
+      personData = performance('owner_id');
+    const aggregate = [
+      'Department Performance Report',
+      'Responsible Person Performance Report',
+    ].includes(reportType);
+    const rows =
+      reportType === 'Department Performance Report'
+        ? departmentData
+        : reportType === 'Responsible Person Performance Report'
+          ? personData
+          : reportType === 'Audit Report'
+            ? filtered(audits)
+            : reportType === 'Kaizen Report'
+              ? filtered(kaizens)
+              : reportType === 'Corrective Action Report'
+                ? filtered(actions)
+                : reportType === 'Licence Expiry Report'
+                  ? filtered(records.filter((r) => r.kind === 'licence'))
+                  : reportType === 'Overdue Compliance Report'
+                    ? scopedTasks.filter((t) => taskStatus(t) === 'Overdue')
+                    : reportType === 'Upcoming Deadlines Report'
+                      ? scopedTasks
+                          .filter(
+                            (t) => t.status !== 'Completed' && t.due >= today(),
+                          )
+                          .sort((a, b) => a.due.localeCompare(b.due))
+                      : reportType === 'Document Missing Report'
+                        ? scopedTasks.filter(
+                            (t) => !files.some((f) => f.record_id === t.id),
+                          )
+                        : reportType === 'Monthly Compliance Report'
+                          ? inMonth
+                          : scopedTasks;
+    const reportSource =
       reportType === 'Audit Report'
         ? audits
         : reportType === 'Kaizen Report'
@@ -2115,34 +3023,132 @@ export default function Workspace() {
             ? actions
             : reportType === 'Licence Expiry Report'
               ? records.filter((r) => r.kind === 'licence')
-              : reportType === 'Overdue Compliance Report'
-                ? tasks.filter((t) => taskStatus(t) === 'Overdue')
-                : reportType === 'Document Missing Report'
-                  ? tasks.filter(
-                      (t) => !files.some((f) => f.record_id === t.id),
-                    )
-                  : reportType === 'Department Performance Report'
-                    ? Array.from(
-                        new Set(tasks.map((t) => t.department || 'Unassigned')),
-                      ).map((d) => ({
-                        title: d,
-                        total: tasks.filter((t) => t.department === d).length,
-                        completed: tasks.filter(
-                          (t) => t.department === d && t.status === 'Completed',
-                        ).length,
-                        overdue: tasks.filter(
-                          (t) =>
-                            t.department === d && taskStatus(t) === 'Overdue',
-                        ).length,
-                      }))
-                    : tasks;
-    rows = filtered(rows);
+              : tasks;
+    const performanceRows = (list: Row[]) => (
+      <div className="performance-list">
+        {list.length ? (
+          list.map((d) => (
+            <div key={d.title}>
+              <div>
+                <b>{d.title}</b>
+                <small>
+                  {d.total} tasks · {d.completed} completed · {d.overdue}{' '}
+                  overdue
+                </small>
+              </div>
+              <progress
+                aria-label={d.title + ' completion'}
+                value={d.completed}
+                max={d.total || 1}
+              />
+            </div>
+          ))
+        ) : (
+          <EmptyState
+            title="No performance data"
+            description="Assigned tasks will appear here."
+          />
+        )}
+      </div>
+    );
     return (
       <>
         {sectionTitle(
-          'Reports & branded forms',
-          'Turn your company’s records into clear, shareable reports.',
+          'Reports',
+          'Understand your compliance position and share clear, company-branded reports.',
         )}
+        <section className="panel">
+          <div className="panel-heading">
+            <div>
+              <h2>{monthTitle} Compliance Summary</h2>
+              <p>Current status of tasks due in the selected month.</p>
+            </div>
+            <label className="report-period">
+              Reporting month
+              <input
+                type="month"
+                aria-label="Reporting month"
+                value={reportMonth}
+                onChange={(e) => {
+                  if (e.target.value) setReportMonth(e.target.value);
+                }}
+              />
+            </label>
+          </div>
+          <div className="monthly-summary">
+            {[
+              [monthCompleted, 'Completed', 'green'],
+              [monthDueSoon, 'Due Soon', 'amber'],
+              [monthOverdue, 'Overdue', 'red'],
+              [monthReview, 'Pending Review', 'blue'],
+            ].map(([value, label, tone]) => (
+              <div key={label}>
+                <b className={String(tone)}>{value}</b>
+                <small>{label}</small>
+              </div>
+            ))}
+          </div>
+          <div className="report-metrics">
+            <div>
+              <strong>{inMonth.length}</strong>
+              <small>Tasks due this month</small>
+            </div>
+            <div>
+              <strong>
+                {inMonth.length
+                  ? Math.round((monthCompleted / inMonth.length) * 100)
+                  : 0}
+                %
+              </strong>
+              <small>Completion of this month’s tasks</small>
+            </div>
+            <div>
+              <strong>
+                {
+                  scopedTasks.filter(
+                    (t) =>
+                      t.status === 'Completed' &&
+                      t.verification_date?.startsWith(reportMonth),
+                  ).length
+                }
+              </strong>
+              <small>Approvals recorded this month</small>
+            </div>
+            <div>
+              <strong>
+                {
+                  scopedTasks.filter(
+                    (t) =>
+                      t.due?.startsWith(nextMonth) && t.status !== 'Completed',
+                  ).length
+                }
+              </strong>
+              <small>Upcoming next month</small>
+            </div>
+            <div>
+              <strong>
+                {
+                  inMonth.filter(
+                    (t) =>
+                      ['High', 'Critical'].includes(t.priority) &&
+                      t.status !== 'Completed',
+                  ).length
+                }
+              </strong>
+              <small>Open high / critical priority</small>
+            </div>
+            <div>
+              <strong>
+                {
+                  inMonth.filter(
+                    (t) => !files.some((f) => f.record_id === t.id),
+                  ).length
+                }
+              </strong>
+              <small>Tasks without evidence</small>
+            </div>
+          </div>
+        </section>
         <div className="report-layout">
           <aside className="panel">
             {reportNames.map((name) => (
@@ -2150,7 +3156,17 @@ export default function Workspace() {
                 className={
                   reportType === name ? 'report-choice active' : 'report-choice'
                 }
-                onClick={() => setReportType(name)}
+                onClick={() => {
+                  setReportType(name);
+                  setSearch('');
+                  setStatus('All statuses');
+                  setDept('All departments');
+                  setOwnerFilter('All people');
+                  setFrequencyFilter('All frequencies');
+                  setRiskFilter('All priorities');
+                  setFrom('');
+                  setTo('');
+                }}
                 key={name}
               >
                 <FileText size={17} />
@@ -2164,14 +3180,23 @@ export default function Workspace() {
                 <h2>{reportType}</h2>
                 <small>{company.name}</small>
               </div>
-              {exportButtons(rows, reportType)}
+              {exportButtons(
+                rows,
+                reportType === 'Monthly Compliance Report'
+                  ? monthTitle + ' ' + reportType
+                  : reportType,
+              )}
             </div>
-            {toolbar(rows)}
+            {toolbar(reportSource)}
             <div className="report-preview">
               <div className="eyebrow">MANAGEMENT OVERVIEW</div>
               <h2>{company.name}</h2>
               <p>
-                {reportType} · Prepared {dateLabel(today())}
+                {reportType}
+                {reportType === 'Monthly Compliance Report'
+                  ? ' · ' + monthTitle
+                  : ''}{' '}
+                · Prepared {dateLabel(today())}
               </p>
               <div className="mini-kpis">
                 <div>
@@ -2180,16 +3205,50 @@ export default function Workspace() {
                 </div>
                 <div>
                   <strong>
-                    {
-                      rows.filter((r) =>
-                        ['Completed', 'Closed', 'Verified'].includes(r.status),
-                      ).length
-                    }
+                    {aggregate
+                      ? rows.reduce((sum, r) => sum + r.completed, 0)
+                      : rows.filter((r) =>
+                          ['Completed', 'Closed', 'Verified'].includes(
+                            r.status,
+                          ),
+                        ).length}
                   </strong>
                   <small>Completed / verified</small>
                 </div>
               </div>
-              {table(rows.slice(0, 8))}
+              {aggregate ? (
+                <div className="table-wrap">
+                  <table className="performance-table">
+                    <thead>
+                      <tr>
+                        <th>Team / Responsible Person</th>
+                        <th>Total</th>
+                        <th>Completed</th>
+                        <th>Overdue</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rows.map((row) => (
+                        <tr key={row.title}>
+                          <td>{row.title}</td>
+                          <td>{row.total}</td>
+                          <td>{row.completed}</td>
+                          <td>{row.overdue}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {!rows.length && <EmptyState />}
+                </div>
+              ) : (
+                table(rows.slice(0, 8))
+              )}
+              {rows.length > 8 && !aggregate && (
+                <small>
+                  Showing 8 of {rows.length} records. Download the full report
+                  using PDF or Excel.
+                </small>
+              )}
             </div>
             {!company.logo && (
               <p className="note">
@@ -2198,6 +3257,68 @@ export default function Workspace() {
             )}
           </section>
         </div>
+        <div className="dashboard-bottom report-insights">
+          <section className="panel">
+            <h2>Department Performance</h2>
+            {performanceRows(departmentData)}
+          </section>
+          <section className="panel">
+            <h2>Responsible Person Performance</h2>
+            {performanceRows(personData)}
+          </section>
+        </div>
+        <section className="panel report-insights">
+          <div className="panel-heading">
+            <h2>Department Workload</h2>
+            <small>Completed and open tasks in the current filters</small>
+          </div>
+          {departmentData.length ? (
+            <ResponsiveContainer width="100%" height={190}>
+              <BarChart
+                data={departmentData.map((d) => ({
+                  ...d,
+                  open: d.total - d.completed,
+                }))}
+              >
+                <CartesianGrid vertical={false} stroke="#edf1f6" />
+                <XAxis
+                  dataKey="title"
+                  tickLine={false}
+                  axisLine={false}
+                  fontSize={11}
+                />
+                <YAxis
+                  allowDecimals={false}
+                  fontSize={10}
+                  axisLine={false}
+                  tickLine={false}
+                  width={26}
+                />
+                <Tooltip />
+                <Bar
+                  name="Completed"
+                  dataKey="completed"
+                  stackId="a"
+                  fill="#6888c7"
+                  maxBarSize={34}
+                />
+                <Bar
+                  name="Open"
+                  dataKey="open"
+                  stackId="a"
+                  fill="#dfe7f5"
+                  radius={[4, 4, 0, 0]}
+                  maxBarSize={34}
+                />
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <EmptyState
+              title="No department workload"
+              description="Assign departments to your tasks to see workload here."
+            />
+          )}
+        </section>
         <section className="panel">
           <h2>Company-branded forms</h2>
           <div className="form-downloads">
@@ -2248,12 +3369,25 @@ export default function Workspace() {
     if (view === 'Compliance Calendar') return calendar();
     if (view === 'My Company') return profile();
     if (view === 'Reports') return reports();
-    if (view === 'Documents')
+    if (view === 'Documents') {
+      const selectedFiles = files.filter(
+        (f) =>
+          (!search || f.name.toLowerCase().includes(search.toLowerCase())) &&
+          (categoryFilter === 'All' || f.category === categoryFilter) &&
+          (docType === 'All types' ||
+            f.name.split('.').pop()?.toLowerCase() === docType) &&
+          (docYear === 'All years' || f.created?.startsWith(docYear)) &&
+          (ownerFilter === 'All people' || f.uploaded_by === ownerFilter) &&
+          (docRecord === 'All compliance' ||
+            (docRecord === 'Company documents'
+              ? !f.record_id
+              : f.record_id === docRecord)),
+      );
       return (
         <>
           {sectionTitle(
-            'Document repository',
-            'Search, preview and download your company’s private evidence.',
+            'Documents',
+            'Keep compliance evidence organized and accessible.',
             <Button
               onClick={() => {
                 setModal({ kind: 'upload' });
@@ -2261,9 +3395,15 @@ export default function Workspace() {
               }}
             >
               <Upload />
-              Upload document
+              Upload Document
             </Button>,
           )}
+          <FilterPills
+            label="Document categories"
+            value={categoryFilter}
+            options={['All', ...categories]}
+            onChange={setCategoryFilter}
+          />
           <div className="toolbar">
             <div className="search">
               <Search size={16} />
@@ -2275,28 +3415,75 @@ export default function Workspace() {
               />
             </div>
             <select
-              aria-label="Document category"
-              value={status}
-              onChange={(e) => setStatus(e.target.value)}
+              aria-label="Document type"
+              value={docType}
+              onChange={(e) => setDocType(e.target.value)}
             >
-              <option>All statuses</option>
-              {categories.map((c) => (
-                <option key={c}>{c}</option>
+              <option>All types</option>
+              {Array.from(
+                new Set(
+                  files
+                    .map((f) => f.name.split('.').pop()?.toLowerCase())
+                    .filter(Boolean),
+                ),
+              ).map((ext) => (
+                <option key={ext} value={ext}>
+                  {ext.toUpperCase()}
+                </option>
+              ))}
+            </select>
+            <select
+              aria-label="Document compliance"
+              value={docRecord}
+              onChange={(e) => setDocRecord(e.target.value)}
+            >
+              <option>All compliance</option>
+              <option>Company documents</option>
+              {records
+                .filter((r) => files.some((f) => f.record_id === r.id))
+                .map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.title}
+                  </option>
+                ))}
+            </select>
+            <select
+              aria-label="Document year"
+              value={docYear}
+              onChange={(e) => setDocYear(e.target.value)}
+            >
+              <option>All years</option>
+              {Array.from(
+                new Set(
+                  files.map((f) => f.created?.slice(0, 4)).filter(Boolean),
+                ),
+              )
+                .sort((a, b) => b.localeCompare(a))
+                .map((year) => (
+                  <option key={year}>{year}</option>
+                ))}
+            </select>
+            <select
+              aria-label="Uploaded by"
+              value={ownerFilter}
+              onChange={(e) => setOwnerFilter(e.target.value)}
+            >
+              <option value="All people">All uploaders</option>
+              {users.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.name}
+                </option>
               ))}
             </select>
           </div>
-          <section className="panel">
-            {documentList(
-              files.filter(
-                (f) =>
-                  (!search ||
-                    f.name.toLowerCase().includes(search.toLowerCase())) &&
-                  (status === 'All statuses' || f.category === status),
-              ),
-            )}
-          </section>
+          <div className="result-count">
+            {selectedFiles.length}{' '}
+            {selectedFiles.length === 1 ? 'document' : 'documents'}
+          </div>
+          <section className="panel">{documentList(selectedFiles)}</section>
         </>
       );
+    }
     if (view === 'Approvals') {
       const pending = records.filter(
         (r) =>
@@ -2328,7 +3515,13 @@ export default function Workspace() {
                 <Button
                   onClick={() => {
                     open(r);
-                    setTab(r.kind === 'task' ? 'Approval' : 'Verification');
+                    setTab(
+                      r.kind === 'task'
+                        ? 'Approval'
+                        : r.kind === 'audit'
+                          ? 'Checklist'
+                          : 'Verification',
+                    );
                   }}
                 >
                   Review submission <ArrowRight />
@@ -2359,13 +3552,14 @@ export default function Workspace() {
           )}
           <section className="panel">
             <div className="table-wrap">
-              <table>
+              <table className="user-table">
                 <thead>
                   <tr>
                     <th>Name</th>
                     <th>Email</th>
                     <th>Department</th>
                     <th>Role</th>
+                    <th>Tasks</th>
                     <th>Status</th>
                     <th>Action</th>
                   </tr>
@@ -2373,18 +3567,31 @@ export default function Workspace() {
                 <tbody>
                   {users.map((u) => (
                     <tr key={u.id}>
-                      <td>{u.name}</td>
-                      <td>
+                      <td data-label="Team member">
+                        <div className="person">
+                          <Avatar name={u.name} />
+                          <b>{u.name}</b>
+                        </div>
+                      </td>
+                      <td data-label="Email">
                         {u.email.endsWith('@demo.invalid')
                           ? 'Demo account'
                           : u.email}
                       </td>
-                      <td>{u.department || '—'}</td>
-                      <td>{u.role}</td>
-                      <td>
+                      <td data-label="Department">{u.department || '—'}</td>
+                      <td data-label="Role">{u.role}</td>
+                      <td data-label="Assigned tasks">
+                        {
+                          tasks.filter(
+                            (t) =>
+                              t.owner_id === u.id && t.status !== 'Completed',
+                          ).length
+                        }
+                      </td>
+                      <td data-label="Status">
                         <Badge value={u.status} />
                       </td>
-                      <td>
+                      <td data-label="Action">
                         <Button
                           variant="ghost"
                           onClick={() => {
@@ -2440,13 +3647,28 @@ export default function Workspace() {
           )}
           <section className="panel">
             <div className="form-grid">
-              {fields.settings.map((f) => (
-                <div key={f.key}>
-                  <small>{f.label}</small>
-                  <b>{settings?.[f.key] || 'Not configured'}</b>
-                </div>
-              ))}
+              {fields.settings
+                .filter((f) => !['reminders', 'licence_alerts'].includes(f.key))
+                .map((f) => (
+                  <div key={f.key}>
+                    <small>{f.label}</small>
+                    <b>{settings?.[f.key] || 'Not configured'}</b>
+                  </div>
+                ))}
             </div>
+            <h3>Task Reminder Schedule</h3>
+            {reminderOptions('reminders', settings?.reminders, () => {}, true)}
+            <h3>Licence Renewal Alerts</h3>
+            {reminderOptions(
+              'licence_alerts',
+              settings?.licence_alerts,
+              () => {},
+              true,
+            )}
+            <p className="note">
+              Overdue escalation follows the configured employee, manager and
+              owner schedule above.
+            </p>
             <div className="callout">
               <b>In-app reminders</b>
               <p>
@@ -2519,7 +3741,7 @@ export default function Workspace() {
               </a>
             </section>
             <section className="panel">
-              <h2>About Compliance Mitra</h2>
+              <h2>About Compliance Calendar</h2>
               <p>
                 A management and tracking workspace for statutory requirements,
                 internal audits and continuous improvement.
@@ -2537,19 +3759,33 @@ export default function Workspace() {
     const kind =
       view === 'Templates' ? templateType : moduleKind[view] || 'task';
     const rows = records.filter((r) => r.kind === kind);
+    const visibleRows = filtered(rows).filter(
+      (r) =>
+        kind !== 'task' ||
+        taskTab === 'All' ||
+        (taskTab === 'Today'
+          ? r.due === today() && r.status !== 'Completed'
+          : taskTab === 'Upcoming'
+            ? r.due > today() && r.status !== 'Completed'
+            : taskTab === 'Overdue'
+              ? taskStatus(r) === 'Overdue'
+              : r.status === 'Completed'),
+    );
     return (
       <>
         {sectionTitle(
-          view,
+          kind === 'requirement' ? 'Compliance Requirements' : view,
           kind === 'requirement'
-            ? 'Potential requirements, reviewed and verified by your compliance expert.'
+            ? 'Manage the requirements applicable to your business.'
             : kind === 'kaizen'
               ? 'Small improvements. Measurable results.'
               : kind === 'audit'
                 ? 'Structured assessments, findings and corrective actions.'
-                : 'Keep responsibilities, evidence and deadlines in one place.',
+                : kind === 'task'
+                  ? 'Tasks assigned to you and actions requiring your attention.'
+                  : 'Keep responsibilities, evidence and deadlines in one place.',
           <div className="actions">
-            {exportButtons(filtered(rows), view)}
+            {exportButtons(visibleRows, view)}
             {(isManager ||
               (['audit', 'kaizen', 'action'].includes(kind) && isExpert)) && (
               <Button onClick={() => create(kind)}>
@@ -2658,135 +3894,117 @@ export default function Workspace() {
             </small>
           </div>
         )}
+        {kind === 'task' && (
+          <div className="task-view-controls">
+            <FilterPills
+              label="Task views"
+              value={taskTab}
+              options={['All', 'Today', 'Upcoming', 'Overdue', 'Completed']}
+              onChange={setTaskTab}
+            />
+            <label className="check">
+              <input
+                type="checkbox"
+                checked={ownerFilter === user.id}
+                onChange={(e) =>
+                  setOwnerFilter(e.target.checked ? user.id : 'All people')
+                }
+              />
+              Assigned to me
+            </label>
+          </div>
+        )}
+        {['task', 'requirement'].includes(kind) && (
+          <FilterPills
+            label="Compliance categories"
+            value={categoryFilter}
+            options={['All', ...categories]}
+            onChange={setCategoryFilter}
+          />
+        )}
         {toolbar(rows)}
-        <section className="panel flush">{table(filtered(rows), kind)}</section>
+        {kind === 'task' ? (
+          (() => {
+            const shown = visibleRows;
+            return (
+              <>
+                <div className="result-count">
+                  {shown.length} {shown.length === 1 ? 'task' : 'tasks'}
+                </div>
+                {shown.length ? (
+                  <div className="compliance-list">
+                    {shown.map((r) => recordCard(r, true))}
+                  </div>
+                ) : (
+                  <section className="panel">
+                    <EmptyState
+                      title={
+                        taskTab === 'Overdue'
+                          ? 'No overdue tasks'
+                          : 'No tasks in this view'
+                      }
+                      description="Try another tab or adjust your filters to see more tasks."
+                      icon={CheckCircle2}
+                    />
+                  </section>
+                )}
+              </>
+            );
+          })()
+        ) : (
+          <>
+            <div className="result-count">{filtered(rows).length} records</div>
+            <section className="panel flush">
+              {table(filtered(rows), kind)}
+            </section>
+          </>
+        )}
       </>
     );
   }
   return (
     <div className="app-shell">
-      <aside className={'sidebar ' + (mobile ? 'mobile-open' : '')}>
-        <a className="brand" href="/">
-          <img src="/assets/mccia-logo.png" alt="MCCIA" />
-          <b>COMPLIANCE MITRA</b>
-          <small>MSME Compliance & Audit Management</small>
-        </a>
-        <div className="workspace-label">WORKSPACE</div>
-        <nav>
-          {allowedNav.map(([name, Icon], i) => (
-            <button
-              key={name}
-              className={
-                (view === name ? 'active ' : '') +
-                (i === 12 ? 'nav-divider' : '')
-              }
-              onClick={() => go(name)}
-            >
-              <Icon size={18} />
-              <span>{name}</span>
-              {name === 'Approvals' && awaiting > 0 && <i>{awaiting}</i>}
-            </button>
-          ))}
-        </nav>
-        <div className="sidebar-footer">
-          <ShieldCheck size={22} />
-          <div>
-            <b>Built for your business</b>
-            <small>An MCCIA Digital Initiative</small>
-          </div>
-        </div>
-      </aside>
-      {mobile && (
-        <button
-          className="mobile-backdrop"
-          aria-label="Close navigation"
-          onClick={() => setMobile(false)}
-        />
-      )}
+      <WorkspaceHeader
+        navigation={allowedNav}
+        view={view}
+        onNavigate={go}
+        user={user}
+        company={company}
+        roles={roles}
+        search={globalSearch}
+        onSearch={setGlobalSearch}
+        busy={busy}
+        notifications={records.filter(
+          (r) =>
+            r.kind === 'notification' &&
+            (!r.owner_id || r.owner_id === user.id || isManager),
+        )}
+        onRead={() =>
+          void act(
+            { action: 'read-notifications' },
+            'Notifications marked as read',
+          )
+        }
+        onNotification={(n) => {
+          const row = records.find((r) => r.id === n.parent_id);
+          if (row) open(row);
+        }}
+        onRole={async (role) => {
+          try {
+            await request({ action: 'demo-role', role }, '/api/auth');
+            setSelected(null);
+            setView('Dashboard');
+            await load();
+          } catch (e) {
+            setError((e as Error).message);
+          }
+        }}
+        onLogout={async () => {
+          await request({ action: 'logout' }, '/api/auth');
+          window.location.href = '/login';
+        }}
+      />
       <div className="app-body">
-        <header className="topbar">
-          <Button
-            className="mobile-toggle"
-            variant="ghost"
-            size="icon"
-            aria-label="Open navigation"
-            onClick={() => setMobile(!mobile)}
-          >
-            <Menu />
-          </Button>
-          <div className="breadcrumb">
-            Workspace <span>/</span> <b>{view}</b>
-          </div>
-          <span className="spacer" />
-          <div className="global-search">
-            <Search size={16} />
-            <input
-              placeholder="Search your workspace…"
-              aria-label="Global search"
-              value={globalSearch}
-              onChange={(e) => setGlobalSearch(e.target.value)}
-            />
-          </div>
-          <Button
-            variant="ghost"
-            size="icon"
-            aria-label="Notifications"
-            onClick={() => setNotifications(!notifications)}
-          >
-            <Bell />
-            {records.some(
-              (r) => r.kind === 'notification' && r.status === 'Unread',
-            ) && <i className="notification-dot" />}
-          </Button>
-          <div className="user-menu">
-            <span className="avatar">
-              {user.name
-                .split(' ')
-                .map((s: string) => s[0])
-                .slice(0, 2)
-                .join('')}
-            </span>
-            <div>
-              <b>{user.name}</b>
-              {company.demo ? (
-                <select
-                  aria-label="Demo role"
-                  value={user.role}
-                  onChange={async (e) => {
-                    try {
-                      await request(
-                        { action: 'demo-role', role: e.target.value },
-                        '/api/auth',
-                      );
-                      setSelected(null);
-                      setView('Dashboard');
-                      await load();
-                    } catch (e) {
-                      setError((e as Error).message);
-                    }
-                  }}
-                >
-                  {roles.map((r) => (
-                    <option key={r}>{r}</option>
-                  ))}
-                </select>
-              ) : (
-                <small>{user.role}</small>
-              )}
-            </div>
-          </div>
-          <Button
-            variant="ghost"
-            size="icon"
-            aria-label="Sign out"
-            onClick={async () => {
-              await request({ action: 'logout' }, '/api/auth');
-              window.location.href = '/login';
-            }}
-          >
-            <LogOut />
-          </Button>
-        </header>
         <main className="workspace-main">
           {error && (
             <div className="error-banner" role="alert">
@@ -2837,12 +4055,9 @@ export default function Workspace() {
           ) : (
             mainView()
           )}
-          <footer>
-            Compliance Mitra · An MCCIA Digital Initiative{' '}
-            <span>
-              Internal compliance tracking. Consult your CA/CS or authorized
-              expert where required.
-            </span>
+          <footer className="workspace-footer">
+            <b>Compliance Calendar · Powered by MCCIA</b>
+            <span>{professionalDisclaimer}</span>
           </footer>
         </main>
       </div>
@@ -2852,48 +4067,6 @@ export default function Workspace() {
           {toast}
         </output>
       )}
-      <Dialog open={notifications} onOpenChange={setNotifications}>
-        <DialogContent className="modal-content">
-          <DialogTitle>Notifications</DialogTitle>
-          <DialogDescription>
-            Deadline reminders, submissions and reviewer decisions.
-          </DialogDescription>
-          <Button
-            variant="outline"
-            onClick={() =>
-              void act(
-                { action: 'read-notifications' },
-                'Notifications marked as read',
-              )
-            }
-          >
-            Mark all as read
-          </Button>
-          {records
-            .filter(
-              (r) =>
-                r.kind === 'notification' &&
-                (!r.owner_id || r.owner_id === user.id || isManager),
-            )
-            .map((n) => (
-              <button
-                className="notification-item"
-                key={n.id}
-                onClick={() => {
-                  const r = records.find((x) => x.id === n.parent_id);
-                  if (r) {
-                    open(r);
-                    setNotifications(false);
-                  }
-                }}
-              >
-                <Badge value={n.status} />
-                <p>{n.title}</p>
-                <small>{dateLabel(n.date)}</small>
-              </button>
-            ))}
-        </DialogContent>
-      </Dialog>
       <Dialog
         open={!!modal}
         onOpenChange={(o) => {

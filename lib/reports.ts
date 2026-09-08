@@ -69,11 +69,11 @@ export async function pdfReport(
       });
     }
     page.drawText(
-      `Generated ${new Date().toLocaleDateString('en-IN')} | Compliance Mitra`,
+      `Generated ${new Date().toLocaleDateString('en-IN')} | Compliance Calendar`,
       { x: 44, y: 720, size: 8, font: regular },
     );
     page.drawText(
-      'Generated through Compliance Mitra | An MCCIA Digital Initiative',
+      'Generated through Compliance Calendar | An MCCIA Digital Initiative',
       { x: 44, y: 30, size: 8, font: regular },
     );
     page.drawText(
@@ -190,7 +190,7 @@ export async function pdfReport(
 export async function excelReport(company: any, title: string, rows: any[]) {
   const ExcelJS = (await import('exceljs')).default;
   const book = new ExcelJS.Workbook();
-  book.creator = 'Compliance Mitra';
+  book.creator = 'Compliance Calendar';
   const sheet = book.addWorksheet('Report');
   const keys = Array.from(new Set(rows.flatMap((r) => Object.keys(r)))).filter(
     (k) =>
