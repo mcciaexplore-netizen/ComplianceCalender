@@ -2,8 +2,13 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "redirects": [
     {
-      "source": "/:path*",
-      "destination": "https://compliance-mitra.vedshridikkar.chatgpt.site/:path*",
+      "source": "/",
+      "destination": "https://compliance-mitra.vedshridikkar.chatgpt.site/",
+      "permanent": false
+    },
+    {
+      "source": "/:path(.*)",
+      "destination": "https://compliance-mitra.vedshridikkar.chatgpt.site/:path",
       "permanent": false
     }
   ]
