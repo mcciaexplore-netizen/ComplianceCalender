@@ -1,15 +1,18 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "redirects": [
+  "framework": null,
+  "installCommand": "",
+  "buildCommand": "node scripts/build-vercel-proxy.mjs",
+  "outputDirectory": ".vercel-public",
+  "routes": [
     {
-      "source": "/",
-      "destination": "https://compliance-mitra.vedshridikkar.chatgpt.site/",
-      "permanent": false
-    },
-    {
-      "source": "/:path(.*)",
-      "destination": "https://compliance-mitra.vedshridikkar.chatgpt.site/:path",
-      "permanent": false
+      "src": "^/(.*)$",
+      "dest": "https://compliance-mitra.vedshridikkar.chatgpt.site/$1",
+      "respectOriginCacheControl": false,
+      "headers": {
+        "x-vercel-enable-rewrite-caching": "0",
+        "Cache-Control": "private, no-store"
+      }
     }
   ]
 }
