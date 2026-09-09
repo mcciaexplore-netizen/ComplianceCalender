@@ -5,6 +5,7 @@
   index,
   uniqueIndex,
 } from 'drizzle-orm/sqlite-core';
+export * from './copilot-schema';
 export const organizations = sqliteTable('organizations', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),

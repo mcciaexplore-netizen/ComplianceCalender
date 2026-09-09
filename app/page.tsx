@@ -48,6 +48,7 @@ export default function Home() {
           workspace.
         </span>
       </div>
+      <div className="access-register"><a href="/copilot">Open SME Helpline AI Copilot <ArrowRight size={14}/></a></div>
     </AccessLayout>
   );
 }

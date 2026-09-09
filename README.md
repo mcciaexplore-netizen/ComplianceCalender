@@ -2,6 +2,8 @@
 
 MCCIA-branded MSME compliance and audit workspace. Separate project; the IVR automation and YojanaSetu projects are unchanged.
 
+**SME Helpline AI Copilot** is available at `/copilot`. Run `npm install` and `npm run dev`, then open http://localhost:3000/copilot. See [COPILOT_README.md](./COPILOT_README.md) for the complete workflow, demo, authentication, speech/AI configuration, database models, API and verification commands.
+
 ## Run locally (Windows)
 
 Use Node 24 and `npm.cmd` in PowerShell. If the network uses Windows-managed certificates, set `$env:NODE_USE_SYSTEM_CA='1'` before installation; do not disable TLS validation.
