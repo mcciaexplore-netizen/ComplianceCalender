@@ -1,7 +1,8 @@
 import './globals.css';
 import './product-theme.css';
+import { APPLICATION_ORIGIN } from '@/lib/deployment';
 export const metadata = {
-  metadataBase: new URL('https://compliance-mitra.lucky-gem-4040.chatgpt.site'),
+  metadataBase: new URL(APPLICATION_ORIGIN),
   title: 'MCCIA Compliance Calendar',
   description:
     'Stay Ahead of Every Compliance Deadline. Manage statutory deadlines, tasks, documents and approvals in one workspace.',

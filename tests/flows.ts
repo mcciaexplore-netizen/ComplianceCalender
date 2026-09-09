@@ -4,21 +4,66 @@ import { PDFDocument } from 'pdf-lib';
 import ExcelJS from 'exceljs';
 import { pdfReport, excelReport } from '../lib/reports';
 const base = process.env.TEST_BASE_URL || 'http://localhost:3000';
+const nativeFetch = globalThis.fetch;
 class Client {
-  cookie = '';
+  private cookies = new Map<string, string>();
+  get cookie() {
+    return [...this.cookies]
+      .map(([name, value]) => `${name}=${value}`)
+      .join('; ');
+  }
+  async fetch(input: string | URL | Request, init?: RequestInit) {
+    const url = new URL(input instanceof Request ? input.url : input, base);
+    if (url.origin !== new URL(base).origin) return nativeFetch(input, init);
+    const headers = new Headers(
+      input instanceof Request ? input.headers : undefined,
+    );
+    new Headers(init?.headers).forEach((value, name) =>
+      headers.set(name, value),
+    );
+    if (this.cookie) headers.set('Cookie', this.cookie);
+    const method =
+      init?.method || (input instanceof Request ? input.method : 'GET');
+    if (
+      !['GET', 'HEAD'].includes(method.toUpperCase()) &&
+      !headers.has('Origin')
+    ) {
+      headers.set('Origin', process.env.TEST_ORIGIN || new URL(base).origin);
+    }
+    const res = await nativeFetch(input instanceof Request ? input : url, {
+      ...init,
+      headers,
+    });
+    for (const cookie of res.headers.getSetCookie()) {
+      const [pair, ...attributes] = cookie.split(';');
+      const separator = pair.indexOf('=');
+      if (separator < 1) continue;
+      const name = pair.slice(0, separator).trim();
+      const maxAge = attributes.find((attribute) =>
+        /^\s*max-age=/i.test(attribute),
+      );
+      const expires = attributes.find((attribute) =>
+        /^\s*expires=/i.test(attribute),
+      );
+      const expired = maxAge
+        ? Number(maxAge.slice(maxAge.indexOf('=') + 1)) <= 0
+        : !!expires &&
+          Date.parse(expires.slice(expires.indexOf('=') + 1)) <= Date.now();
+      if (expired) this.cookies.delete(name);
+      else this.cookies.set(name, pair.slice(separator + 1));
+    }
+    return res;
+  }
   async call(path: string, body?: any, expected = 200) {
-    const res = await fetch(base + path, {
+    const res = await this.fetch(path, {
       method: body ? 'POST' : 'GET',
       headers: {
         'Content-Type': 'application/json',
-        ...(this.cookie ? { Cookie: this.cookie } : {}),
       },
       ...(body ? { body: JSON.stringify(body) } : {}),
     });
     const data: any = await res.json();
     assert.equal(res.status, expected, JSON.stringify(data));
-    const cookie = res.headers.get('set-cookie');
-    if (cookie) this.cookie = cookie.split(';')[0];
     return data;
   }
   async ws() {
@@ -40,9 +85,8 @@ class Client {
     form.set('file', new File([bytes as BlobPart], name, { type }));
     form.set('category', 'Audit');
     if (record_id) form.set('record_id', record_id);
-    const res = await fetch(base + '/api/files', {
+    const res = await this.fetch('/api/files', {
       method: 'POST',
-      headers: { Cookie: this.cookie },
       body: form,
     });
     const body: any = await res.json();
@@ -285,16 +329,13 @@ await other.action(
   { action: 'save', id: task.id, data: { title: 'Tampered' } },
   404,
 );
-const denied = await fetch(base + `/api/files?id=${evidence}`, {
-  headers: { Cookie: other.cookie },
-});
+const denied = await other.fetch(`/api/files?id=${evidence}`);
 assert.equal(denied.status, 404);
 const anonymous = await fetch(base + '/api/workspace');
 assert.equal(anonymous.status, 401);
-const csrf = await fetch(base + '/api/workspace', {
+const csrf = await c.fetch('/api/workspace', {
   method: 'POST',
   headers: {
-    Cookie: c.cookie,
     Origin: 'https://evil.example',
     'Content-Type': 'application/json',
   },
@@ -304,12 +345,7 @@ assert.equal(csrf.status, 403);
 console.log(
   'PASS tenant separation, anonymous access, cross-origin rejection, employee approval restriction',
 );
-const nativeFetch = globalThis.fetch;
-globalThis.fetch = ((url: any, options?: any) =>
-  nativeFetch(
-    typeof url === 'string' && url.startsWith('/') ? base + url : url,
-    { ...options, headers: { ...options?.headers, Cookie: c.cookie } },
-  )) as typeof fetch;
+globalThis.fetch = ((url, options) => c.fetch(url, options)) as typeof fetch;
 await mkdir('tests/artifacts', { recursive: true });
 for (const [title, kind] of [
   ['Monthly Compliance Report', 'task'],

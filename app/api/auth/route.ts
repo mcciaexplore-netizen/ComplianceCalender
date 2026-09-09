@@ -22,13 +22,21 @@ export async function POST(req: Request) {
   try {
     sameOrigin(req);
     const b = (await req.json()) as any;
-    if (['login', 'register', 'reset', 'demo'].includes(b.action))
+    if (['login', 'register', 'reset', 'demo'].includes(b.action)) {
+      const email =
+        typeof b.email === 'string' ? b.email.trim().toLowerCase() : '';
+      // Vercel visitors can share a network peer. Retain a network abuse
+      // ceiling and enforce the tighter limit per account across all peers.
       await rateLimit(
-        'auth:' +
+        'auth:network:' +
           b.action +
           ':' +
           (req.headers.get('cf-connecting-ip') || 'local'),
+        email && b.action !== 'demo' ? 200 : 20,
       );
+      if (email && b.action !== 'demo')
+        await rateLimit(`auth:account:${b.action}:${await digest(email)}`);
+    }
     if (b.action === 'logout') {
       const token = req.headers
         .get('cookie')

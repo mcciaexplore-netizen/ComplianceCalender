@@ -1,4 +1,5 @@
 ﻿import { env } from 'cloudflare:workers';
+import { hasAllowedOrigin } from './deployment';
 export const db = () => env.DB as D1Database;
 export const bucket = () => (env as unknown as { FILES: R2Bucket }).FILES;
 export const id = () => crypto.randomUUID();
@@ -54,9 +55,7 @@ export function responseError(error: unknown) {
   );
 }
 export function sameOrigin(req: Request) {
-  const origin = req.headers.get('origin');
-  if (origin && origin !== new URL(req.url).origin)
-    fail('Request origin is not allowed.', 403);
+  if (!hasAllowedOrigin(req)) fail('Request origin is not allowed.', 403);
 }
 export async function digest(value: string) {
   return Array.from(
@@ -120,7 +119,7 @@ export async function makeSession(userId: string, req: Request) {
   );
   return `cm_session=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=86400${new URL(req.url).protocol === 'https:' ? '; Secure' : ''}`;
 }
-export async function rateLimit(key: string) {
+export async function rateLimit(key: string, maximum = 20) {
   await run(
     'INSERT INTO attempts(key,count,until) VALUES(?,1,?) ON CONFLICT(key) DO UPDATE SET count=CASE WHEN until<? THEN 1 ELSE count+1 END,until=CASE WHEN until<? THEN excluded.until ELSE until END',
     key,
@@ -129,7 +128,8 @@ export async function rateLimit(key: string) {
     Date.now(),
   );
   const x = await one('SELECT count FROM attempts WHERE key=?', key);
-  if (x.count > 20) fail('Too many attempts. Try again in 15 minutes.', 429);
+  if (x.count > maximum)
+    fail('Too many attempts. Try again in 15 minutes.', 429);
 }
 export const managers = ['Owner', 'Compliance Manager', 'MCCIA Administrator'];
 export const experts = ['Expert', 'Auditor', 'MCCIA Administrator'];
