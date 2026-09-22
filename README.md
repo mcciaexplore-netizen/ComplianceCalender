@@ -1,5 +1,7 @@
 ﻿# Compliance Mitra
 
+**MSME Helpline voice receptionist** is available at `/ivr`. It includes a working call simulator, authenticated operations dashboard, PostgreSQL/Supabase adapter and provider interfaces. Start with [the IVR guide](./docs/ivr/README.md) and [local setup](./docs/ivr/SETUP.md). Real telephone calls require provider commissioning; mock mode requires no credentials.
+
 MCCIA-branded MSME compliance and audit workspace. Separate project; the IVR automation and YojanaSetu projects are unchanged.
 
 **SME Helpline AI Copilot** is available at `/copilot`. Run `npm install` and `npm run dev`, then open http://localhost:3000/copilot. See [COPILOT_README.md](./COPILOT_README.md) for the complete workflow, demo, authentication, speech/AI configuration, database models, API and verification commands.
@@ -23,7 +25,6 @@ Choose **Explore demo workspace**, then **Explore demo**. Each demo creates an i
 - Expert verification; verified requirements generate tasks. Approval of recurring tasks generates the next calendar occurrence.
 - Month/week/list/year calendar, task assignment, configurable checklists, filing details, private evidence, comments, corrections, approval and activity history.
 - Audit templates with sections, question types, required flags and scoring weights; audit assessments, findings, linked corrective actions and closure checks.
-- Kaizen problem/root cause/improvement, before/after evidence, benefits and linked corrective actions.
 - Private R2 file storage, file validation, previews, downloads, document versions and protection of approved evidence.
 - Licence register, in-app reminders and escalation evaluation, user management, departments, settings and guidance request records.
 - Company-branded PDF forms and real XLSX exports with header styling, filters, column widths and logo embedding.
@@ -47,7 +48,7 @@ This is a working application with tested core workflows, not a production compl
 - `npm.cmd run build`
 - With the local server running: `npm.cmd test`
 
-Tests exercise expert verification, employee submission, correction/resubmission, approval, recurrence, audit findings, corrective action evidence/closure, Kaizen before/after and benefits, tenant isolation, permission rejection, CSRF rejection, registration, recovery and report generation. Test-created data stays in isolated local companies. Artifacts are written to ignored `tests/artifacts/`.
+Tests exercise expert verification, employee submission, correction/resubmission, approval, recurrence, audit findings, corrective action evidence/closure, tenant isolation, permission rejection, CSRF rejection, registration, recovery and report generation. Test-created data stays in isolated local companies. Artifacts are written to ignored `tests/artifacts/`.
 
 ## Architecture
 

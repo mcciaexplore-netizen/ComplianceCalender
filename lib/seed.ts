@@ -252,25 +252,6 @@ export async function seedOrganization(
     likelihood: 3,
     impact: 3,
   });
-  await insert(org, 'kaizen', {
-    title: 'Reduce machine changeover time',
-    department: 'Production',
-    area: 'CNC line 2',
-    owner_id: assignee,
-    reviewer_id: reviewer,
-    status: 'In Progress',
-    due: date(10),
-    category: 'Productivity',
-    problem: 'Average changeover takes 42 minutes',
-    current: 'Tools are located across several workstations',
-    root_cause: 'No standard setup sequence',
-    root_category: 'Method',
-    improvement: 'Introduce a pre-staged tool trolley and setup checklist',
-    proposed_action: 'Pilot the trolley on CNC line 2',
-    expected_result: 'Reduce changeover time to 25 minutes',
-    expected_savings: 180000,
-    actual_savings: 0,
-  });
   await insert(org, 'licence', {
     title: 'Factory licence',
     authority: 'Directorate of Industrial Safety',

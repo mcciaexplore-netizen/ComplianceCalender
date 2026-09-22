@@ -225,59 +225,6 @@ await c.action({
   action: 'company',
   data: { ...(await c.ws()).company, logo },
 });
-const k = await c.action({
-  action: 'create',
-  kind: 'kaizen',
-  data: {
-    title: 'Tool setup improvement',
-    owner_id: employee,
-    reviewer_id: reviewer,
-    due: '2026-09-30',
-    problem: 'Long setup',
-    root_cause: 'Scattered tools',
-    improvement: 'Stage tools',
-    proposed_action: 'Verify new setup',
-    actual_savings: 25000,
-    expected_savings: 40000,
-  },
-});
-await c.role('Employee');
-await c.action({ action: 'transition', id: k.id, status: 'In Progress' });
-const before = await c.file('before.png', 'image/png', imageBytes, k.id),
-  after = await c.file('after.png', 'image/png', imageBytes, k.id);
-await c.action({
-  action: 'save',
-  id: k.id,
-  data: { before_image: before, after_image: after },
-});
-await c.action({ action: 'transition', id: k.id, status: 'Implemented' });
-await c.role('Reviewer');
-await c.action({
-  action: 'transition',
-  id: k.id,
-  status: 'Verified',
-  comment: 'Benefits validated',
-});
-w = await c.ws();
-const ka = w.records.find(
-  (r: any) => r.kind === 'action' && r.parent_id === k.id,
-);
-await c.action({
-  action: 'transition',
-  id: ka.id,
-  status: 'Closed',
-  comment: 'Implementation confirmed',
-});
-await c.action({
-  action: 'transition',
-  id: k.id,
-  status: 'Closed',
-  comment: 'Improvement complete',
-});
-console.log(
-  'PASS Kaizen → before/after → benefit → linked action → verification → closure',
-);
-await c.role('Owner');
 w = await c.ws();
 const other = new Client();
 await other.call('/api/auth', { action: 'demo' });
@@ -314,7 +261,6 @@ await mkdir('tests/artifacts', { recursive: true });
 for (const [title, kind] of [
   ['Monthly Compliance Report', 'task'],
   ['Compliance Audit Form', 'audit'],
-  ['Kaizen Improvement Audit Form', 'kaizen'],
   ['Corrective Action Report', 'action'],
   ['Licence Report', 'licence'],
 ]) {

@@ -27,7 +27,6 @@ const kinds = [
   'requirement',
   'task',
   'audit',
-  'kaizen',
   'action',
   'licence',
   'compliance-template',
@@ -286,7 +285,7 @@ export async function POST(req: Request) {
       if (d.start && d.due && d.due < d.start)
         fail('Due date cannot be before task start date.');
       if (
-        ['task', 'audit', 'kaizen', 'action', 'requirement'].includes(b.kind) &&
+        ['task', 'audit', 'action', 'requirement'].includes(b.kind) &&
         (!d.owner_id || !d.reviewer_id || !d.due)
       )
         fail('Select an owner, reviewer and due date.');
@@ -307,13 +306,11 @@ export async function POST(req: Request) {
           ? 'Pending Verification'
           : b.kind === 'task'
             ? 'Not Started'
-            : b.kind === 'kaizen'
-              ? 'Proposed'
-              : b.kind === 'action'
-                ? 'Open'
-                : b.kind === 'audit'
-                  ? 'Draft'
-                  : 'Active';
+            : b.kind === 'action'
+              ? 'Open'
+              : b.kind === 'audit'
+                ? 'Draft'
+                : 'Active';
       if (b.kind === 'task') {
         if (!d.requirement_id)
           fail('Choose a verified compliance requirement.');
@@ -375,7 +372,7 @@ export async function POST(req: Request) {
       )
         fail('You cannot edit this record.', 403);
       if (
-        ['Completed', 'Closed', 'Verified', 'Awaiting Approval', 'Submitted', 'Under Review', 'Implemented'].includes(r.status) &&
+        ['Completed', 'Closed', 'Verified', 'Awaiting Approval', 'Submitted', 'Under Review'].includes(r.status) &&
         r.kind !== 'requirement'
       )
         fail('Submitted or verified records are locked. Return the work for correction before editing.');
@@ -400,7 +397,7 @@ export async function POST(req: Request) {
           ))
         )
           fail('Select an active team member from this organization.');
-      for (const key of ['before_image', 'after_image', 'evidence_reference'])
+      for (const key of ['evidence_reference'])
         if (
           d[key] &&
           !(await one(
@@ -526,12 +523,6 @@ export async function POST(req: Request) {
           Submitted: ['Under Review', 'In Progress'],
           'Under Review': ['Closed', 'In Progress'],
         },
-        kaizen: {
-          Proposed: ['In Progress'],
-          'In Progress': ['Implemented'],
-          Implemented: ['Verified'],
-          Verified: ['Closed'],
-        },
         action: {
           Open: ['Assigned', 'In Progress'],
           Assigned: ['In Progress'],
@@ -604,36 +595,6 @@ export async function POST(req: Request) {
             });
         }
       }
-      if (r.kind === 'kaizen' && next === 'Implemented') {
-        if (
-          !r.problem ||
-          !r.root_cause ||
-          !r.improvement ||
-          !r.before_image ||
-          !r.after_image
-        )
-          fail(
-            'Complete the problem, root cause, improvement and before/after images.',
-          );
-        if (
-          !(await one(
-            "SELECT id FROM records WHERE organization_id=? AND kind='action' AND parent_id=?",
-            org,
-            r.id,
-          ))
-        )
-          await insert(org, 'action', {
-            title: r.proposed_action || r.title,
-            parent_id: r.id,
-            source: 'Kaizen Audit',
-            owner_id: r.owner_id,
-            reviewer_id: r.reviewer_id,
-            due: r.due,
-            status: 'Pending Verification',
-            priority: 'Medium',
-            evidence_reference: r.after_image,
-          });
-      }
       if (
         r.kind === 'action' &&
         ['Pending Verification', 'Closed'].includes(next) &&
@@ -643,7 +604,7 @@ export async function POST(req: Request) {
         fail('Upload evidence before submitting or verifying this action.');
       if (['Verified', 'Closed'].includes(next) && !b.comment?.trim())
         fail('Verification remarks are required.');
-      if (['audit', 'kaizen'].includes(r.kind) && next === 'Closed') {
+      if (r.kind === 'audit' && next === 'Closed') {
         const open = await one(
           "SELECT count(*) n FROM records WHERE organization_id=? AND kind='action' AND parent_id=? AND status!='Closed'",
           org,

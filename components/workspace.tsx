@@ -21,7 +21,6 @@ import {
   ListChecks,
   ShieldCheck,
   ClipboardCheck,
-  Lightbulb,
   Target,
   FolderOpen,
   FileBadge,
@@ -78,7 +77,6 @@ const navigation = [
   ['My Tasks', ListChecks],
   ['Approvals', CheckCircle2],
   ['Audits', ClipboardCheck],
-  ['Kaizen', Lightbulb],
   ['Corrective Actions', Target],
   ['Documents', FolderOpen],
   ['Licences', FileBadge],
@@ -92,7 +90,6 @@ const moduleKind: Record<string, string> = {
   Requirements: 'requirement',
   'My Tasks': 'task',
   Audits: 'audit',
-  Kaizen: 'kaizen',
   'Corrective Actions': 'action',
   Licences: 'licence',
   Templates: 'compliance-template',
@@ -503,7 +500,6 @@ export default function Workspace() {
     ].includes(user.role);
   const tasks = records.filter((r) => r.kind === 'task'),
     audits = records.filter((r) => r.kind === 'audit'),
-    kaizens = records.filter((r) => r.kind === 'kaizen'),
     actions = records.filter((r) => r.kind === 'action');
   const person = (pid: string) =>
     users.find((u) => u.id === pid)?.name || 'Unassigned';
@@ -652,42 +648,7 @@ export default function Workspace() {
               ],
               ['What Needs to Be Done', ['checklist']],
             ]
-          : kind === 'kaizen'
-            ? [
-                [
-                  'Improvement Overview',
-                  [
-                    'title',
-                    'department',
-                    'area',
-                    'audit_date',
-                    'category',
-                    'owner_id',
-                    'reviewer_id',
-                    'due',
-                  ],
-                ],
-                [
-                  'Problem & Root Cause',
-                  ['problem', 'current', 'root_cause', 'root_category'],
-                ],
-                [
-                  'Action & Expected Result',
-                  ['improvement', 'proposed_action', 'expected_result'],
-                ],
-                ['Before & After', ['before_condition', 'after_condition']],
-                [
-                  'Benefits & Verification',
-                  [
-                    'benefit',
-                    'expected_savings',
-                    'actual_savings',
-                    'time_saved',
-                    'auditor_comments',
-                  ],
-                ],
-              ]
-            : [['', (fields[kind] || []).map((f) => f.key)]];
+          : [['', (fields[kind] || []).map((f) => f.key)]];
   const reminderOptions = (
     key: string,
     value: string,
@@ -964,12 +925,9 @@ export default function Workspace() {
         detail={
           r.kind === 'audit'
             ? 'Audit score: ' + auditScore(r) + '%'
-            : r.kind === 'kaizen'
-              ? 'Actual savings: ₹' +
-                Number(r.actual_savings || 0).toLocaleString('en-IN')
-              : requirement
-                ? 'Compliance: ' + requirement.title
-                : undefined
+            : requirement
+              ? 'Compliance: ' + requirement.title
+              : undefined
         }
         onOpen={() => open(r)}
         onEvidence={
@@ -1005,23 +963,11 @@ export default function Workspace() {
           <table>
             <thead>
               <tr>
-                <th>
-                  {type === 'kaizen'
-                    ? 'Improvement'
-                    : type === 'audit'
-                      ? 'Audit'
-                      : 'Compliance / activity'}
-                </th>
+                <th>{type === 'audit' ? 'Audit' : 'Compliance / activity'}</th>
                 <th>Category / department</th>
                 <th>Due date</th>
                 <th>Responsible</th>
-                <th>
-                  {type === 'audit'
-                    ? 'Score'
-                    : type === 'kaizen'
-                      ? 'Savings'
-                      : 'Priority / risk'}
-                </th>
+                <th>{type === 'audit' ? 'Score' : 'Priority / risk'}</th>
                 <th>Status</th>
                 <th>Last action</th>
                 <th>Action</th>
@@ -1057,10 +1003,7 @@ export default function Workspace() {
                   <td>
                     {type === 'audit'
                       ? auditScore(r) + '%'
-                      : type === 'kaizen'
-                        ? '₹' +
-                          Number(r.actual_savings || 0).toLocaleString('en-IN')
-                        : r.priority || r.risk || 'Not set'}
+                      : r.priority || r.risk || 'Not set'}
                   </td>
                   <td>
                     <Badge
@@ -1859,16 +1802,7 @@ export default function Workspace() {
               'Documents',
               'Activity',
             ]
-          : r.kind === 'kaizen'
-            ? [
-                'Overview',
-                'Before / After',
-                'Benefits',
-                'Actions',
-                'Verification',
-                'Activity',
-              ]
-            : ['Overview', 'Documents', 'Comments', 'Verification', 'Activity'];
+          : ['Overview', 'Documents', 'Comments', 'Verification', 'Activity'];
     const transitions: Record<string, Record<string, string[]>> = {
       task: {
         'Not Started': ['In Progress', 'Awaiting Approval'],
@@ -1882,12 +1816,6 @@ export default function Workspace() {
         'In Progress': ['Submitted'],
         Submitted: ['Under Review', 'In Progress'],
         'Under Review': ['Closed', 'In Progress'],
-      },
-      kaizen: {
-        Proposed: ['In Progress'],
-        'In Progress': ['Implemented'],
-        Implemented: ['Verified'],
-        Verified: ['Closed'],
       },
       action: {
         Open: ['Assigned', 'In Progress'],
@@ -1925,11 +1853,7 @@ export default function Workspace() {
           `${r.kind.replaceAll('-', ' ')} · ${r.department || r.category || company.name}`,
           exportButtons(
             [r],
-            r.kind === 'kaizen'
-              ? 'Kaizen Improvement Audit'
-              : r.kind === 'audit'
-                ? 'Compliance Audit'
-                : r.title,
+            r.kind === 'audit' ? 'Compliance Audit' : r.title,
           ),
         )}
         <div className="record-summary">
@@ -2440,70 +2364,7 @@ export default function Workspace() {
                 {documentList(documents)}
               </>
             )}
-            {tab === 'Before / After' && (
-              <>
-                <div className="before-after">
-                  {['before', 'after'].map((side) => (
-                    <article key={side}>
-                      <div className="eyebrow">{side.toUpperCase()}</div>
-                      {r[side + '_image'] ? (
-                        <img
-                          src={`/api/files?id=${r[side + '_image']}&preview=1`}
-                          alt={`${side} improvement condition`}
-                        />
-                      ) : (
-                        <div className="image-empty">Upload a {side} image</div>
-                      )}
-                      <p>
-                        {r[side + '_condition'] ||
-                          'Describe this condition in the overview.'}
-                      </p>
-                      {editable && (
-                        <label className="upload-control">
-                          <Upload size={16} />
-                          Upload {side} image
-                          <input
-                            type="file"
-                            accept="image/png,image/jpeg"
-                            aria-label={`Upload ${side} image`}
-                            onChange={async (e) => {
-                              if (e.target.files?.[0]) {
-                                const fid = await upload(
-                                  e.target.files[0],
-                                  r.id,
-                                  'Audit',
-                                );
-                                if (fid)
-                                  await act({
-                                    action: 'save',
-                                    id: r.id,
-                                    data: { [side + '_image']: fid },
-                                  });
-                              }
-                            }}
-                          />
-                        </label>
-                      )}
-                    </article>
-                  ))}
-                </div>
-              </>
-            )}
-            {tab === 'Benefits' && (
-              <div className="kpis">
-                {[
-                  ['Potential savings', r.expected_savings || 0],
-                  ['Actual savings', r.actual_savings || 0],
-                  ['Hours saved / month', r.time_saved || 0],
-                ].map(([label, value]) => (
-                  <div key={label} className="kpi">
-                    <span>{label}</span>
-                    <strong>{Number(value).toLocaleString('en-IN')}</strong>
-                  </div>
-                ))}
-              </div>
-            )}
-            {['Findings', 'Corrective Actions', 'Actions'].includes(tab) && (
+            {['Findings', 'Corrective Actions'].includes(tab) && (
               <>
                 <div className="panel-heading">
                   <h2>Linked corrective actions</h2>
@@ -2512,10 +2373,7 @@ export default function Workspace() {
                       onClick={() =>
                         create('action', {
                           parent_id: r.id,
-                          source:
-                            r.kind === 'audit'
-                              ? 'Compliance Audit'
-                              : 'Kaizen Audit',
+                          source: 'Compliance Audit',
                           owner_id: r.owner_id,
                           reviewer_id: r.reviewer_id,
                         })
@@ -2755,7 +2613,6 @@ export default function Workspace() {
                       Submitted: 'Submit audit',
                       'In Progress': 'Start / resume',
                       Closed: 'Verify & close',
-                      Verified: 'Verify improvement',
                       'Pending Verification': 'Submit evidence',
                     } as Record<string, string>
                   )[next] || next}
@@ -2936,7 +2793,6 @@ export default function Workspace() {
       'Upcoming Deadlines Report',
       'Overdue Compliance Report',
       'Audit Report',
-      'Kaizen Report',
       'Corrective Action Report',
       'Licence Expiry Report',
       'Department Performance Report',
@@ -2993,37 +2849,33 @@ export default function Workspace() {
           ? personData
           : reportType === 'Audit Report'
             ? filtered(audits)
-            : reportType === 'Kaizen Report'
-              ? filtered(kaizens)
-              : reportType === 'Corrective Action Report'
-                ? filtered(actions)
-                : reportType === 'Licence Expiry Report'
-                  ? filtered(records.filter((r) => r.kind === 'licence'))
-                  : reportType === 'Overdue Compliance Report'
-                    ? scopedTasks.filter((t) => taskStatus(t) === 'Overdue')
-                    : reportType === 'Upcoming Deadlines Report'
-                      ? scopedTasks
-                          .filter(
-                            (t) => t.status !== 'Completed' && t.due >= today(),
-                          )
-                          .sort((a, b) => a.due.localeCompare(b.due))
-                      : reportType === 'Document Missing Report'
-                        ? scopedTasks.filter(
-                            (t) => !files.some((f) => f.record_id === t.id),
-                          )
-                        : reportType === 'Monthly Compliance Report'
-                          ? inMonth
-                          : scopedTasks;
+            : reportType === 'Corrective Action Report'
+              ? filtered(actions)
+              : reportType === 'Licence Expiry Report'
+                ? filtered(records.filter((r) => r.kind === 'licence'))
+                : reportType === 'Overdue Compliance Report'
+                  ? scopedTasks.filter((t) => taskStatus(t) === 'Overdue')
+                  : reportType === 'Upcoming Deadlines Report'
+                    ? scopedTasks
+                        .filter(
+                          (t) => t.status !== 'Completed' && t.due >= today(),
+                        )
+                        .sort((a, b) => a.due.localeCompare(b.due))
+                    : reportType === 'Document Missing Report'
+                      ? scopedTasks.filter(
+                          (t) => !files.some((f) => f.record_id === t.id),
+                        )
+                      : reportType === 'Monthly Compliance Report'
+                        ? inMonth
+                        : scopedTasks;
     const reportSource =
       reportType === 'Audit Report'
         ? audits
-        : reportType === 'Kaizen Report'
-          ? kaizens
-          : reportType === 'Corrective Action Report'
-            ? actions
-            : reportType === 'Licence Expiry Report'
-              ? records.filter((r) => r.kind === 'licence')
-              : tasks;
+        : reportType === 'Corrective Action Report'
+          ? actions
+          : reportType === 'Licence Expiry Report'
+            ? records.filter((r) => r.kind === 'licence')
+            : tasks;
     const performanceRows = (list: Row[]) => (
       <div className="performance-list">
         {list.length ? (
@@ -3324,7 +3176,6 @@ export default function Workspace() {
           <div className="form-downloads">
             {[
               'Compliance Audit Form',
-              'Kaizen Improvement Audit Form',
               'Corrective Action Form',
               'Compliance Checklist',
               'Monthly Compliance Report',
@@ -3336,15 +3187,13 @@ export default function Workspace() {
                 variant="outline"
                 disabled={busy}
                 onClick={() => {
-                  const kind = title.includes('Kaizen')
-                    ? 'kaizen'
-                    : title.includes('Corrective')
-                      ? 'action'
-                      : title.includes('Licence')
-                        ? 'licence'
-                        : title.includes('Audit')
-                          ? 'audit'
-                          : 'task';
+                  const kind = title.includes('Corrective')
+                    ? 'action'
+                    : title.includes('Licence')
+                      ? 'licence'
+                      : title.includes('Audit')
+                        ? 'audit'
+                        : 'task';
                   const row = Object.fromEntries(
                     (fields[kind] || []).map((f) => [
                       f.key,
@@ -3622,7 +3471,6 @@ export default function Workspace() {
                     audits.filter((a) => a.status !== 'Closed').length,
                   ],
                   ['Corrective actions', actions.length],
-                  ['Kaizen initiatives', kaizens.length],
                 ].map(([label, n]) => (
                   <div key={label}>
                     <strong>{n}</strong>
@@ -3777,17 +3625,15 @@ export default function Workspace() {
           kind === 'requirement' ? 'Compliance Requirements' : view,
           kind === 'requirement'
             ? 'Manage the requirements applicable to your business.'
-            : kind === 'kaizen'
-              ? 'Small improvements. Measurable results.'
-              : kind === 'audit'
-                ? 'Structured assessments, findings and corrective actions.'
-                : kind === 'task'
-                  ? 'Tasks assigned to you and actions requiring your attention.'
-                  : 'Keep responsibilities, evidence and deadlines in one place.',
+            : kind === 'audit'
+              ? 'Structured assessments, findings and corrective actions.'
+              : kind === 'task'
+                ? 'Tasks assigned to you and actions requiring your attention.'
+                : 'Keep responsibilities, evidence and deadlines in one place.',
           <div className="actions">
             {exportButtons(visibleRows, view)}
             {(isManager ||
-              (['audit', 'kaizen', 'action'].includes(kind) && isExpert)) && (
+              (['audit', 'action'].includes(kind) && isExpert)) && (
               <Button onClick={() => create(kind)}>
                 <Plus />
                 {kind === 'task'
@@ -3796,9 +3642,7 @@ export default function Workspace() {
                     ? 'Add compliance'
                     : kind === 'audit'
                       ? 'Create audit'
-                      : kind === 'kaizen'
-                        ? 'Create Kaizen'
-                        : 'Add record'}
+                      : 'Add record'}
               </Button>
             )}
           </div>,
@@ -3826,41 +3670,6 @@ export default function Workspace() {
               Potentially applicable requirements need CA/CS or authorized
               expert verification before becoming active tasks.
             </span>
-          </div>
-        )}
-        {kind === 'kaizen' && (
-          <div className="kpis">
-            {[
-              ['Total Kaizens', kaizens.length],
-              [
-                'In progress',
-                kaizens.filter((k) => k.status === 'In Progress').length,
-              ],
-              [
-                'Verified / closed',
-                kaizens.filter((k) => ['Verified', 'Closed'].includes(k.status))
-                  .length,
-              ],
-              [
-                'Potential savings',
-                '₹' +
-                  kaizens
-                    .reduce((n, k) => n + Number(k.expected_savings || 0), 0)
-                    .toLocaleString('en-IN'),
-              ],
-              [
-                'Actual savings',
-                '₹' +
-                  kaizens
-                    .reduce((n, k) => n + Number(k.actual_savings || 0), 0)
-                    .toLocaleString('en-IN'),
-              ],
-            ].map(([label, count]) => (
-              <div className="kpi" key={label}>
-                <span>{label}</span>
-                <strong>{count}</strong>
-              </div>
-            ))}
           </div>
         )}
         {kind === 'action' && (
@@ -4024,7 +3833,6 @@ export default function Workspace() {
                     [
                       'task',
                       'audit',
-                      'kaizen',
                       'action',
                       'requirement',
                       'licence',
@@ -4156,7 +3964,7 @@ export default function Workspace() {
                   <option value="">Company document</option>
                   {records
                     .filter((r) =>
-                      ['task', 'audit', 'kaizen', 'action'].includes(r.kind),
+                      ['task', 'audit', 'action'].includes(r.kind),
                     )
                     .map((r) => (
                       <option key={r.id} value={r.id}>
