@@ -312,15 +312,16 @@ export async function POST(req: Request) {
                 ? 'Draft'
                 : 'Active';
       if (b.kind === 'task') {
-        if (!d.requirement_id)
-          fail('Choose a verified compliance requirement.');
-        const requirement = await record(org, d.requirement_id);
-        if (
-          requirement.kind !== 'requirement' ||
-          requirement.status !== 'Verified'
-        )
-          fail('Only verified requirements can create tasks.');
-        d.checklist = (d.checklist || requirement.checklist || []).map(
+        let requirement: any = null;
+        if (d.requirement_id) {
+          requirement = await record(org, d.requirement_id);
+          if (
+            requirement.kind !== 'requirement' ||
+            requirement.status !== 'Verified'
+          )
+            fail('Only verified requirements can be linked to tasks.');
+        }
+        d.checklist = (d.checklist || requirement?.checklist || []).map(
           (text: any) => ({
             text: typeof text === 'string' ? text : text.text,
             done: false,

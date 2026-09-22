@@ -4059,15 +4059,6 @@ export default function Workspace() {
                 }}
               >
                 {fieldList(modal.kind, draft, setDraft)}
-                {modal.kind === 'task' &&
-                  !records.some(
-                    (r) => r.kind === 'requirement' && r.status === 'Verified',
-                  ) && (
-                    <p className="note">
-                      An expert must verify a compliance requirement before a
-                      task can be created.
-                    </p>
-                  )}
                 <Button type="submit" disabled={busy}>
                   {busy ? 'Saving…' : 'Save record'}
                 </Button>

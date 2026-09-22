@@ -64,7 +64,7 @@ export const fields: Record<string, Field[]> = {
   ],
   task: [
     ...common,
-    f('requirement_id', 'Verified requirement', 'requirement', true),
+    f('requirement_id', 'Verified requirement', 'requirement', false),
     f('category', 'Category', 'select', false, categories),
     f('start', 'Start date', 'date'),
     f('period', 'Applicable period'),
