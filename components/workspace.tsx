@@ -3592,7 +3592,7 @@ export default function Workspace() {
               <h2>About Compliance Calendar</h2>
               <p>
                 A management and tracking workspace for statutory requirements,
-                internal audits and continuous improvement.
+                internal audits and corrective actions.
               </p>
               <p>
                 Potential applicability and internal scores require qualified

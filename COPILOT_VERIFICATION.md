@@ -3,7 +3,7 @@
 - TypeScript: `npm run typecheck` passed.
 - Production Worker/client build: `npm run build` passed.
 - Copilot integration suite: 151 assertions passed against the local server after the final security and extraction changes.
-- Existing compliance regression suite: all task, audit, Kaizen, access-control, export and authentication flows passed.
+- Existing compliance regression suite: all task, audit, access-control, export and authentication flows passed.
 - Online dependency audit after targeted transitive upgrades: 0 reported vulnerabilities.
 - PDF, DOCX, XLSX, CSV and TXT extraction exercised with generated fixtures; blank multipage PDFs correctly rejected.
 - Authenticated SSE delivered transcript, profile and AI answer events. Unsupported answers and cross-tenant access were rejected.
